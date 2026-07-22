@@ -2,11 +2,18 @@
   box-sizing: border-box;
 }
 
-body {
+/* Lock the whole page so touch swipes reach the puzzle as pointer moves
+   (continuous drag-painting) instead of being consumed as page scrolling. */
+html,
+body,
+#root {
   margin: 0;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 #root {
   width: 100%;
-  min-height: 100svh;
 }
