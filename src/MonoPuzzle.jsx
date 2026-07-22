@@ -15,6 +15,68 @@ const PADBOT = 26;
 
 const NB = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
+// ---- triangular puzzles ----
+// A "tri" puzzle is a big equilateral triangle split into rows of small
+// triangles. Row r holds 2r+1 triangles; even col = points up, odd = down.
+// Cells are labelled left-to-right, top-to-bottom (1..N); label L in row r
+// (with r*r cells above it) has col = L - r*r - 1.
+const TRI_S = 72;                  // small-triangle side
+const TRI_H = TRI_S * 0.8660254;   // small-triangle height (S * sqrt(3)/2)
+
+// number of columns (small triangles) in row r
+const colsOf = (m, r) => (m.shape === "tri" ? 2 * r + 1 : m.cols);
+
+// label (1-based, reading order) -> [row, col] for a tri puzzle
+function triLabelRC(label) {
+  const r = Math.floor(Math.sqrt(label - 1));
+  return [r, label - r * r - 1];
+}
+
+// three [x,y] vertices of tri cell (r,c) in world coords
+function triVerts(m, r, c) {
+  const ox = m.x + PADX, oy = m.y + PADTOP;
+  const W = m.rows * TRI_S;
+  const topLeft = ox + (W - r * TRI_S) / 2;
+  const botLeft = ox + (W - (r + 1) * TRI_S) / 2;
+  const yTop = oy + r * TRI_H, yBot = oy + (r + 1) * TRI_H;
+  if (c % 2 === 0) {
+    const k = c / 2;
+    return [[topLeft + k * TRI_S, yTop], [botLeft + k * TRI_S, yBot], [botLeft + (k + 1) * TRI_S, yBot]];
+  }
+  const k = (c - 1) / 2;
+  return [[topLeft + k * TRI_S, yTop], [topLeft + (k + 1) * TRI_S, yTop], [botLeft + (k + 1) * TRI_S, yBot]];
+}
+
+// edge-adjacent cells of (r,c)
+function neighbors(m, r, c) {
+  const res = [];
+  if (m.shape === "tri") {
+    if (c - 1 >= 0) res.push([r, c - 1]);
+    if (c + 1 <= 2 * r) res.push([r, c + 1]);
+    if (c % 2 === 0) {
+      if (r + 1 < m.rows) res.push([r + 1, c + 1]); // up-tri shares base with down-tri below
+    } else if (r - 1 >= 0) {
+      res.push([r - 1, c - 1]);                     // down-tri shares top with up-tri above
+    }
+    return res;
+  }
+  for (const [dr, dc] of NB) {
+    const nr = r + dr, nc = c + dc;
+    if (nr >= 0 && nc >= 0 && nr < m.rows && nc < m.cols) res.push([nr, nc]);
+  }
+  return res;
+}
+
+// point-in-triangle (barycentric sign test)
+function pointInTri(px, py, [[ax, ay], [bx, by], [cx, cy]]) {
+  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+  const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+  const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(hasNeg && hasPos);
+}
+
 // puzzle metadata (circles/fixedBlack/fixedWhite are 0-indexed [row,col])
 const METAS = [
   { id: 1,  x: 0,    y: 0, rows: 3, cols: 3, circles: [[0, 0], [1, 2]] },
@@ -34,19 +96,34 @@ const METAS = [
       [2, 0], [2, 3],
       [3, 0], [3, 1], [3, 2], [3, 3],
     ] },
-].map((m) => ({
-  ...m,
-  fw: m.cols * T + 2 * PADX,
-  fh: PADTOP + m.rows * T + PADBOT,
-  circleSet: new Set(m.circles.map(([r, c]) => r + "," + c)),
-  fixedSet: new Set(
-    [...(m.fixedBlack || []), ...(m.fixedWhite || [])].map(([r, c]) => r + "," + c)
-  ),
-  fixedColor: new Map([
-    ...(m.fixedBlack || []).map(([r, c]) => [r + "," + c, 1]),
-    ...(m.fixedWhite || []).map(([r, c]) => [r + "," + c, 0]),
-  ]),
-}));
+  // triangular puzzles: circles listed as cell labels (1..9, reading order)
+  { id: 13, x: 4560, y: 0, shape: "tri", rows: 3, triCircles: [1, 5, 9] },
+  { id: 14, x: 4920, y: 0, shape: "tri", rows: 3, triCircles: [3, 5, 7, 9] },
+].map((m) => {
+  const circles = m.shape === "tri"
+    ? (m.triCircles || []).map(triLabelRC)
+    : m.circles;
+  const fw = m.shape === "tri"
+    ? m.rows * TRI_S + 2 * PADX
+    : m.cols * T + 2 * PADX;
+  const fh = m.shape === "tri"
+    ? PADTOP + m.rows * TRI_H + PADBOT
+    : PADTOP + m.rows * T + PADBOT;
+  return {
+    ...m,
+    circles,
+    fw,
+    fh,
+    circleSet: new Set(circles.map(([r, c]) => r + "," + c)),
+    fixedSet: new Set(
+      [...(m.fixedBlack || []), ...(m.fixedWhite || [])].map(([r, c]) => r + "," + c)
+    ),
+    fixedColor: new Map([
+      ...(m.fixedBlack || []).map(([r, c]) => [r + "," + c, 1]),
+      ...(m.fixedWhite || []).map(([r, c]) => [r + "," + c, 0]),
+    ]),
+  };
+});
 
 const frameCenter = (m) => ({ x: m.x + m.fw / 2, y: m.y + m.fh / 2 });
 
@@ -64,20 +141,17 @@ const GUIDE_W = GPAD * 2 + GUIDE_SOLUTION[0].length * GT;
 const GUIDE_H = GLABEL + GUIDE_SOLUTION.length * GT + GPAD;
 
 function isSolved(m, grid) {
-  const { rows, cols } = m;
+  const key = (r, c) => r + "," + c;
   const blacks = [];
-  for (let r = 0; r < rows; r++)
-    for (let c = 0; c < cols; c++) if (grid[r][c] === 1) blacks.push([r, c]);
+  for (let r = 0; r < m.rows; r++)
+    for (let c = 0; c < colsOf(m, r); c++) if (grid[r][c] === 1) blacks.push([r, c]);
   if (blacks.length > 0) {
     const seen = new Set();
-    const key = (r, c) => r + "," + c;
     const st = [blacks[0]];
     seen.add(key(...blacks[0]));
     while (st.length) {
       const [r, c] = st.pop();
-      for (const [dr, dc] of NB) {
-        const nr = r + dr, nc = c + dc;
-        if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue;
+      for (const [nr, nc] of neighbors(m, r, c)) {
         if (grid[nr][nc] === 1 && !seen.has(key(nr, nc))) {
           seen.add(key(nr, nc));
           st.push([nr, nc]);
@@ -89,9 +163,7 @@ function isSolved(m, grid) {
   for (const [r, c] of m.circles) {
     const col = grid[r][c];
     let cnt = 0;
-    for (const [dr, dc] of NB) {
-      const nr = r + dr, nc = c + dc;
-      if (nr < 0 || nc < 0 || nr >= rows || nc >= cols) continue;
+    for (const [nr, nc] of neighbors(m, r, c)) {
       if (grid[nr][nc] === col) cnt++;
     }
     if (cnt !== 1) return false;
@@ -108,7 +180,7 @@ export default function MonoPuzzle() {
   const [cam, setCam] = useState({ x: 0, y: 0 });
   const [grids, setGrids] = useState(() =>
     METAS.map((m) => {
-      const g = Array.from({ length: m.rows }, () => Array(m.cols).fill(0));
+      const g = Array.from({ length: m.rows }, (_, r) => Array(colsOf(m, r)).fill(0));
       m.fixedColor.forEach((color, k) => {
         const [r, c] = k.split(",").map(Number);
         g[r][c] = color;
@@ -150,6 +222,12 @@ export default function MonoPuzzle() {
     for (let i = 0; i < METAS.length; i++) {
       const m = METAS[i];
       const gx = m.x + PADX, gy = m.y + PADTOP;
+      if (m.shape === "tri") {
+        for (let r = 0; r < m.rows; r++)
+          for (let c = 0; c < colsOf(m, r); c++)
+            if (pointInTri(wx, wy, triVerts(m, r, c))) return { i, row: r, col: c };
+        continue;
+      }
       if (wx >= gx && wx < gx + m.cols * T && wy >= gy && wy < gy + m.rows * T) {
         const col = Math.floor((wx - gx) / T);
         const row = Math.floor((wy - gy) / T);
@@ -274,39 +352,68 @@ export default function MonoPuzzle() {
                   <rect x={m.x + m.fw - 26} y={m.y + 15} width={9} height={9} fill={INK} />
                 )}
                 {/* tiles */}
-                {Array.from({ length: m.rows }).map((_, r) =>
-                  Array.from({ length: m.cols }).map((__, c) => {
-                    const black = grids[i][r][c] === 1;
-                    const tx = gx + c * T, ty = gy + r * T;
-                    const hasCircle = m.circleSet.has(r + "," + c);
-                    const isFixed = m.fixedSet.has(r + "," + c);
-                    return (
-                      <g key={r + "-" + c}>
-                        <rect
-                          x={tx + 1} y={ty + 1} width={T - 2} height={T - 2} rx={4}
-                          fill={black ? INK : "#FFFFFF"}
-                          stroke={black ? INK : HAIR}
-                          strokeWidth={1}
-                        />
-                        {isFixed && (
-                          <path
-                            d={`M ${tx + T - 12} ${ty + 4} L ${tx + T - 4} ${ty + 4} L ${tx + T - 4} ${ty + 12} Z`}
-                            fill={black ? "#FFFFFF" : INK}
-                            opacity={0.5}
-                          />
-                        )}
-                        {hasCircle && (
-                          <circle
-                            cx={tx + T / 2} cy={ty + T / 2} r={T * 0.27}
-                            fill="none"
-                            stroke={black ? "#FFFFFF" : INK}
-                            strokeWidth={3}
-                          />
-                        )}
-                      </g>
-                    );
-                  })
-                )}
+                {m.shape === "tri"
+                  ? Array.from({ length: m.rows }).map((_, r) =>
+                      Array.from({ length: colsOf(m, r) }).map((__, c) => {
+                        const black = grids[i][r][c] === 1;
+                        const hasCircle = m.circleSet.has(r + "," + c);
+                        const v = triVerts(m, r, c);
+                        const cx = (v[0][0] + v[1][0] + v[2][0]) / 3;
+                        const cy = (v[0][1] + v[1][1] + v[2][1]) / 3;
+                        return (
+                          <g key={r + "-" + c}>
+                            <polygon
+                              points={v.map(([px, py]) => px + "," + py).join(" ")}
+                              fill={black ? INK : "#FFFFFF"}
+                              stroke={black ? INK : HAIR}
+                              strokeWidth={1}
+                              strokeLinejoin="round"
+                            />
+                            {hasCircle && (
+                              <circle
+                                cx={cx} cy={cy} r={TRI_S * 0.2}
+                                fill="none"
+                                stroke={black ? "#FFFFFF" : INK}
+                                strokeWidth={3}
+                              />
+                            )}
+                          </g>
+                        );
+                      })
+                    )
+                  : Array.from({ length: m.rows }).map((_, r) =>
+                      Array.from({ length: m.cols }).map((__, c) => {
+                        const black = grids[i][r][c] === 1;
+                        const tx = gx + c * T, ty = gy + r * T;
+                        const hasCircle = m.circleSet.has(r + "," + c);
+                        const isFixed = m.fixedSet.has(r + "," + c);
+                        return (
+                          <g key={r + "-" + c}>
+                            <rect
+                              x={tx + 1} y={ty + 1} width={T - 2} height={T - 2} rx={4}
+                              fill={black ? INK : "#FFFFFF"}
+                              stroke={black ? INK : HAIR}
+                              strokeWidth={1}
+                            />
+                            {isFixed && (
+                              <path
+                                d={`M ${tx + T - 12} ${ty + 4} L ${tx + T - 4} ${ty + 4} L ${tx + T - 4} ${ty + 12} Z`}
+                                fill={black ? "#FFFFFF" : INK}
+                                opacity={0.5}
+                              />
+                            )}
+                            {hasCircle && (
+                              <circle
+                                cx={tx + T / 2} cy={ty + T / 2} r={T * 0.27}
+                                fill="none"
+                                stroke={black ? "#FFFFFF" : INK}
+                                strokeWidth={3}
+                              />
+                            )}
+                          </g>
+                        );
+                      })
+                    )}
               </g>
             );
           })}
