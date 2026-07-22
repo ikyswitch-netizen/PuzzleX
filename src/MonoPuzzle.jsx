@@ -25,8 +25,7 @@ const METAS = [
   { id: 6, x: 1900, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixedBlack: [[0, 0]] },
   { id: 7, x: 2280, y: 0, rows: 3, cols: 3, circles: [[0, 1], [2, 1]], fixedWhite: [[0, 1], [2, 1]] },
   { id: 8, x: 2660, y: 0, rows: 3, cols: 3, circles: [[2, 0], [2, 1], [1, 0]] },
-  { id: 9, x: 3040, y: 0, rows: 3, cols: 3, circles: [[0, 0], [0, 2], [2, 0], [2, 2]], fixedWhite: [[0, 0], [2, 2]] },
-  { id: 10, x: 3420, y: 0, rows: 4, cols: 4, circles: [[1, 2], [1, 3], [2, 2], [2, 3]] },
+  { id: 9, x: 3040, y: 0, rows: 4, cols: 4, circles: [[1, 2], [1, 3], [2, 2], [2, 3]] },
 ].map((m) => ({
   ...m,
   fw: m.cols * T + 2 * PADX,
@@ -42,6 +41,19 @@ const METAS = [
 }));
 
 const frameCenter = (m) => ({ x: m.x + m.fw / 2, y: m.y + m.fh / 2 });
+
+// ---- tutorial guide: a worked example shown above puzzle 1 until it's solved ----
+const GUIDE_SOLUTION = [
+  [1, 1, 0],
+  [0, 1, 1],
+  [0, 0, 0],
+];
+const GT = 28;    // guide tile size
+const GPAD = 10;
+const GLABEL = 20;
+const GGAP = 22;  // gap between guide and puzzle 1's frame
+const GUIDE_W = GPAD * 2 + GUIDE_SOLUTION[0].length * GT;
+const GUIDE_H = GLABEL + GUIDE_SOLUTION.length * GT + GPAD;
 
 function isSolved(m, grid) {
   const { rows, cols } = m;
@@ -123,6 +135,7 @@ export default function MonoPuzzle() {
   );
 
   const solvedFlags = grids.map((g, i) => isSolved(METAS[i], g));
+  const firstSolved = solvedFlags[0];
 
   // world point -> {i,row,col} if inside some puzzle's tile area
   const tileAt = useCallback((wx, wy) => {
@@ -164,12 +177,14 @@ export default function MonoPuzzle() {
       toggle(hit.i, hit.row, hit.col);
       painted.add(hit.row + "," + hit.col);
       dragRef.current = { mode: "paint", puzzle: hit.i, painted };
-    } else {
+    } else if (firstSolved) {
       dragRef.current = {
         mode: "pan",
         sx: e.clientX, sy: e.clientY,
         cx: cam.x, cy: cam.y,
       };
+    } else {
+      dragRef.current = null;
     }
   };
 
@@ -226,6 +241,9 @@ export default function MonoPuzzle() {
         {/* WORLD LAYER */}
         <g transform={`translate(${-cam.x},${-cam.y})`}>
           {dots}
+          {!firstSolved && (
+            <GuideBoard x={METAS[0].x + (METAS[0].fw - GUIDE_W) / 2} y={-GGAP - GUIDE_H} />
+          )}
           {METAS.map((m, i) => {
             const active = i === activeIndex;
             const solved = solvedFlags[i];
@@ -290,6 +308,12 @@ export default function MonoPuzzle() {
         <Reticle w={size.w} h={size.h} locked={activeIndex >= 0} solved={activeIndex >= 0 && solvedFlags[activeIndex]} />
       </svg>
 
+      {!firstSolved && (
+        <div style={{ position: "absolute", top: 18, left: 0, right: 0, textAlign: "center", fontSize: 12, letterSpacing: 2, color: DIM, pointerEvents: "none" }}>
+          SOLVE TO UNLOCK SCROLLING
+        </div>
+      )}
+
       {/* progress pips */}
       <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 10, pointerEvents: "none" }}>
         {solvedFlags.map((s, i) => (
@@ -297,6 +321,31 @@ export default function MonoPuzzle() {
         ))}
       </div>
     </div>
+  );
+}
+
+function GuideBoard({ x, y }) {
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      <rect x={x} y={y} width={GUIDE_W} height={GUIDE_H} rx={8} fill="none" stroke={HAIR} strokeWidth={1} strokeDasharray="4 3" />
+      <text x={x + GPAD} y={y + 14} fontSize={10} fill={DIM} letterSpacing="2">
+        EXAMPLE
+      </text>
+      {GUIDE_SOLUTION.map((row, r) =>
+        row.map((v, c) => {
+          const tx = x + GPAD + c * GT, ty = y + GLABEL + r * GT;
+          return (
+            <rect
+              key={r + "-" + c}
+              x={tx + 1} y={ty + 1} width={GT - 2} height={GT - 2} rx={3}
+              fill={v ? INK : "#FFFFFF"}
+              stroke={v ? INK : HAIR}
+              strokeWidth={1}
+            />
+          );
+        })
+      )}
+    </g>
   );
 }
 
