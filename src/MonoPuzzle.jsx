@@ -209,6 +209,10 @@ const METAS = [
 
 const frameCenter = (m) => ({ x: m.x + m.fw / 2, y: m.y + m.fh / 2 });
 
+// ---- per-puzzle answer button (world coords, centered below each frame) ----
+const BTN_W = 48, BTN_H = 30, BTN_GAP = 16;
+const buttonRect = (m) => ({ x: m.x + m.fw / 2 - BTN_W / 2, y: m.y + m.fh + BTN_GAP, w: BTN_W, h: BTN_H });
+
 // ---- tutorial guide: a worked example shown above puzzle 1 until it's solved ----
 const GUIDE_SOLUTION = [
   [1, 1, 0],
@@ -303,16 +307,25 @@ export default function MonoPuzzle() {
 
   const firstSolved = solved[0];
 
-  // evaluate the centered puzzle when the player presses the answer button
-  const submit = useCallback(() => {
-    const i = activeIndex;
+  // evaluate a puzzle when the player presses its answer button
+  const submit = useCallback((i) => {
     if (i < 0 || solved[i]) return;
     const ok = isSolved(METAS[i], grids[i]);
     if (ok) setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
-    setFlash({ i, ok });
+    setFlash({ i, ok, t: Date.now() });
     if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setFlash(null), 1200);
-  }, [activeIndex, solved, grids]);
+    flashTimer.current = setTimeout(() => setFlash(null), 500);
+  }, [solved, grids]);
+
+  // world point -> puzzle index if inside its (unsolved) answer button
+  const buttonAt = useCallback((wx, wy) => {
+    for (let i = 0; i < METAS.length; i++) {
+      if (solved[i]) continue;
+      const b = buttonRect(METAS[i]);
+      if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) return i;
+    }
+    return -1;
+  }, [solved]);
 
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
 
@@ -362,6 +375,12 @@ export default function MonoPuzzle() {
   const onPointerDown = (e) => {
     svgRef.current.setPointerCapture(e.pointerId);
     const w = clientToWorld(e);
+    const btn = buttonAt(w.x, w.y);
+    if (btn >= 0) {
+      submit(btn);
+      dragRef.current = null;
+      return;
+    }
     const hit = tileAt(w.x, w.y);
     if (hit && hit.i === activeIndex && !solved[hit.i]) {
       const painted = new Set();
@@ -418,6 +437,14 @@ export default function MonoPuzzle() {
       ref={wrapRef}
       style={{ width: "100%", height: "100vh", background: PAPER, position: "relative", overflow: "hidden", userSelect: "none", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
     >
+      <style>{`
+        @keyframes puzShake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-5px)} 40%{transform:translateX(5px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} }
+        @keyframes puzPulse { 0%{transform:scale(1)} 45%{transform:scale(1.05)} 100%{transform:scale(1)} }
+        .puz-shake { animation: puzShake .42s ease; transform-box: fill-box; transform-origin: center; }
+        .puz-pulse { animation: puzPulse .42s ease; transform-box: fill-box; transform-origin: center; }
+        @keyframes hintBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
+        .hint-bob { animation: hintBob 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+      `}</style>
       <svg
         ref={svgRef}
         width={size.w}
@@ -439,9 +466,11 @@ export default function MonoPuzzle() {
             const active = i === activeIndex;
             const isDone = solved[i];
             const wrong = flash && flash.i === i && !flash.ok;
+            const right = flash && flash.i === i && flash.ok;
             const gx = m.x + PADX, gy = m.y + PADTOP;
+            const b = buttonRect(m);
             return (
-              <g key={m.id} opacity={active || isDone ? 1 : 0.72}>
+              <g key={m.id} className={wrong ? "puz-shake" : right ? "puz-pulse" : undefined} opacity={active || isDone ? 1 : 0.72}>
                 {/* frame */}
                 <rect
                   x={m.x} y={m.y} width={m.fw} height={m.fh} rx={10}
@@ -566,6 +595,25 @@ export default function MonoPuzzle() {
                         );
                       })
                     )}
+                {/* answer button (checkmark) — hidden once solved */}
+                {!isDone && (
+                  <g style={{ cursor: "pointer" }}>
+                    <rect
+                      x={b.x} y={b.y} width={b.w} height={b.h} rx={9}
+                      fill="#FFFFFF"
+                      stroke={active ? INK : DIM}
+                      strokeWidth={1.5}
+                    />
+                    <path
+                      d={`M ${b.x + b.w / 2 - 9} ${b.y + b.h / 2} l 6 7 l 12 -13`}
+                      fill="none"
+                      stroke={active ? INK : DIM}
+                      strokeWidth={2.4}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </g>
+                )}
               </g>
             );
           })}
@@ -575,44 +623,8 @@ export default function MonoPuzzle() {
         <Reticle w={size.w} h={size.h} locked={activeIndex >= 0} solved={activeIndex >= 0 && solved[activeIndex]} />
       </svg>
 
-      {!firstSolved && (
-        <div style={{ position: "absolute", top: 18, left: 0, right: 0, textAlign: "center", fontSize: 12, letterSpacing: 2, color: DIM, pointerEvents: "none" }}>
-          SOLVE TO UNLOCK SCROLLING
-        </div>
-      )}
-
-      {/* answer button + verdict for the centered puzzle */}
-      {activeIndex >= 0 && (
-        <div style={{ position: "absolute", bottom: 44, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" }}>
-          {flash && flash.i === activeIndex && (
-            <div style={{ fontSize: 12, letterSpacing: 3, color: INK }}>
-              {flash.ok ? "正解 — CORRECT" : "不正解 — TRY AGAIN"}
-            </div>
-          )}
-          {solved[activeIndex] ? (
-            <div style={{ fontSize: 12, letterSpacing: 3, color: INK }}>SOLVED ■</div>
-          ) : (
-            <button
-              type="button"
-              onClick={submit}
-              style={{
-                pointerEvents: "auto",
-                font: "inherit",
-                fontSize: 13,
-                letterSpacing: 3,
-                color: INK,
-                background: "#FFFFFF",
-                border: `1.5px solid ${INK}`,
-                borderRadius: 8,
-                padding: "8px 22px",
-                cursor: "pointer",
-              }}
-            >
-              回答 CHECK
-            </button>
-          )}
-        </div>
-      )}
+      {/* non-verbal lock cue while puzzle 1 is unsolved */}
+      {!firstSolved && <LockCue />}
 
       {/* progress pips */}
       <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 10, pointerEvents: "none" }}>
@@ -625,12 +637,10 @@ export default function MonoPuzzle() {
 }
 
 function GuideBoard({ x, y }) {
+  const cxg = x + GUIDE_W / 2;
   return (
     <g style={{ pointerEvents: "none" }}>
       <rect x={x} y={y} width={GUIDE_W} height={GUIDE_H} rx={8} fill="none" stroke={HAIR} strokeWidth={1} strokeDasharray="4 3" />
-      <text x={x + GPAD} y={y + 14} fontSize={10} fill={DIM} letterSpacing="2">
-        EXAMPLE
-      </text>
       {GUIDE_SOLUTION.map((row, r) =>
         row.map((v, c) => {
           const tx = x + GPAD + c * GT, ty = y + GLABEL + r * GT;
@@ -645,7 +655,27 @@ function GuideBoard({ x, y }) {
           );
         })
       )}
+      {/* bobbing down-arrow: "copy this into the puzzle below" */}
+      <g className="hint-bob">
+        <path
+          d={`M ${cxg} ${y + GUIDE_H + 3} l 0 12 M ${cxg - 6} ${y + GUIDE_H + 9} l 6 6 l 6 -6`}
+          fill="none" stroke={DIM} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+        />
+      </g>
     </g>
+  );
+}
+
+// small padlock icon, top-center: non-verbal "solve first to scroll" cue
+function LockCue() {
+  return (
+    <div style={{ position: "absolute", top: 16, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <path d="M 8 12 v -2.5 a 5 5 0 0 1 10 0 v 2.5" fill="none" stroke={DIM} strokeWidth="1.6" strokeLinecap="round" />
+        <rect x="6.5" y="12" width="13" height="10" rx="2.5" fill="none" stroke={DIM} strokeWidth="1.6" />
+        <circle cx="13" cy="16.5" r="1.5" fill={DIM} />
+      </svg>
+    </div>
   );
 }
 
