@@ -302,6 +302,17 @@ export default function MonoPuzzle() {
     return () => ro.disconnect();
   }, [ready]);
 
+  // iOS Safari still treats touch-drags as scroll/zoom despite touch-action:none,
+  // firing pointercancel mid-drag. A non-passive touchmove preventDefault stops it,
+  // so a swipe stays a continuous pointer stream (needed for drag-painting).
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const prevent = (e) => e.preventDefault();
+    svg.addEventListener("touchmove", prevent, { passive: false });
+    return () => svg.removeEventListener("touchmove", prevent);
+  }, []);
+
   const centerW = { x: cam.x + size.w / 2, y: cam.y + size.h / 2 };
   const activeIndex = METAS.findIndex(
     (m) => centerW.x >= m.x && centerW.x <= m.x + m.fw && centerW.y >= m.y && centerW.y <= m.y + m.fh
@@ -380,7 +391,7 @@ export default function MonoPuzzle() {
   };
 
   const onPointerDown = (e) => {
-    svgRef.current.setPointerCapture(e.pointerId);
+    try { svgRef.current.setPointerCapture(e.pointerId); } catch (_) {}
     const w = clientToWorld(e);
     const btn = buttonAt(w.x, w.y);
     if (btn >= 0) {
