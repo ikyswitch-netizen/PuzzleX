@@ -25,6 +25,8 @@ const METAS = [
   { id: 6, x: 1900, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixedBlack: [[0, 0]] },
   { id: 7, x: 2280, y: 0, rows: 3, cols: 3, circles: [[0, 1], [2, 1]], fixedWhite: [[0, 1], [2, 1]] },
   { id: 8, x: 2660, y: 0, rows: 3, cols: 3, circles: [[2, 0], [2, 1], [1, 0]] },
+  { id: 9, x: 3040, y: 0, rows: 3, cols: 3, circles: [[0, 0], [0, 2], [2, 0], [2, 2]], fixedWhite: [[0, 0], [2, 2]] },
+  { id: 10, x: 3420, y: 0, rows: 4, cols: 4, circles: [[1, 2], [1, 3], [2, 2], [2, 3]] },
 ].map((m) => ({
   ...m,
   fw: m.cols * T + 2 * PADX,
