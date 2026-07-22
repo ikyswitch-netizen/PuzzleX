@@ -17,15 +17,17 @@ const NB = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // puzzle metadata (circles/fixedBlack/fixedWhite are 0-indexed [row,col])
 const METAS = [
-  { id: 1, x: 0,    y: 0, rows: 3, cols: 3, circles: [[0, 0], [1, 2]] },
-  { id: 2, x: 380,  y: 0, rows: 3, cols: 3, circles: [[0, 0], [1, 1], [2, 0]] },
-  { id: 3, x: 760,  y: 0, rows: 3, cols: 3, circles: [[1, 0], [1, 2]], fixedBlack: [[2, 2]] },
-  { id: 4, x: 1140, y: 0, rows: 3, cols: 3, circles: [[1, 1]] },
-  { id: 5, x: 1520, y: 0, rows: 3, cols: 3, circles: [[0, 0], [0, 2], [2, 0], [2, 2]] },
-  { id: 6, x: 1900, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixedBlack: [[0, 0]] },
-  { id: 7, x: 2280, y: 0, rows: 3, cols: 3, circles: [[0, 1], [2, 1]], fixedWhite: [[0, 1], [2, 1]] },
-  { id: 8, x: 2660, y: 0, rows: 3, cols: 3, circles: [[2, 0], [2, 1], [1, 0]] },
-  { id: 9, x: 3040, y: 0, rows: 4, cols: 4, circles: [[1, 2], [1, 3], [2, 2], [2, 3]] },
+  { id: 1,  x: 0,    y: 0, rows: 3, cols: 3, circles: [[0, 0], [1, 2]] },
+  { id: 2,  x: 380,  y: 0, rows: 3, cols: 3, circles: [[0, 2], [1, 0]] },
+  { id: 3,  x: 760,  y: 0, rows: 3, cols: 3, circles: [[0, 2], [2, 0]] },
+  { id: 4,  x: 1140, y: 0, rows: 3, cols: 3, circles: [[0, 0], [1, 1], [2, 0]] },
+  { id: 5,  x: 1520, y: 0, rows: 3, cols: 3, circles: [[1, 0], [1, 2]], fixedBlack: [[2, 2]] },
+  { id: 6,  x: 1900, y: 0, rows: 3, cols: 3, circles: [[1, 1]] },
+  { id: 7,  x: 2280, y: 0, rows: 3, cols: 3, circles: [[0, 0], [0, 2], [2, 0], [2, 2]] },
+  { id: 8,  x: 2660, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixedBlack: [[0, 0]] },
+  { id: 9,  x: 3040, y: 0, rows: 3, cols: 3, circles: [[0, 1], [2, 1]], fixedWhite: [[0, 1], [2, 1]] },
+  { id: 10, x: 3420, y: 0, rows: 3, cols: 3, circles: [[2, 0], [2, 1], [1, 0]] },
+  { id: 11, x: 3800, y: 0, rows: 4, cols: 4, circles: [[1, 2], [1, 3], [2, 2], [2, 3]] },
 ].map((m) => ({
   ...m,
   fw: m.cols * T + 2 * PADX,
