@@ -23,13 +23,51 @@ const NB = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const TRI_S = 72;                  // small-triangle side
 const TRI_H = TRI_S * 0.8660254;   // small-triangle height (S * sqrt(3)/2)
 
-// number of columns (small triangles) in row r
-const colsOf = (m, r) => (m.shape === "tri" ? 2 * r + 1 : m.cols);
+// ---- hexagonal puzzles ----
+// A "hex" puzzle is a diamond of flat-top hexagons arranged in columns;
+// column r holds m.colCounts[r] hexagons, vertically centered on the frame.
+// Adjacent columns are offset by half a hex-height, the standard flat-top
+// hex-grid stagger, so consecutive column counts must differ by exactly 1
+// for the whole diamond to stay mirror-symmetric on both axes.
+const HEX_R = 40;                 // hex circumradius
+const HEX_W = HEX_R * 2;          // hex width (point to point)
+const HEX_H = HEX_R * Math.sqrt(3); // hex height (flat to flat)
+const HEX_COLGAP = HEX_R * 1.5;   // horizontal spacing between column centers
+
+// label (1-based, reading order: top to bottom, then left to right) -> [col, idx]
+function hexLabelOrder(colCounts) {
+  const cells = [];
+  colCounts.forEach((n, r) => {
+    for (let c = 0; c < n; c++) cells.push([r, c, c - (n - 1) / 2]);
+  });
+  cells.sort((a, b) => (a[2] - b[2]) || (a[0] - b[0]));
+  return cells.map(([r, c]) => [r, c]);
+}
+
+// number of cells in row/column r
+const colsOf = (m, r) => {
+  if (m.shape === "tri") return 2 * r + 1;
+  if (m.shape === "hex") return m.colCounts[r];
+  return m.cols;
+};
 
 // label (1-based, reading order) -> [row, col] for a tri puzzle
 function triLabelRC(label) {
   const r = Math.floor(Math.sqrt(label - 1));
   return [r, label - r * r - 1];
+}
+
+// six [x,y] vertices of hex column r, index c, in world coords (flat-top)
+function hexVerts(m, r, c) {
+  const maxCol = Math.max(...m.colCounts);
+  const cx = m.x + PADX + HEX_R + r * HEX_COLGAP;
+  const cy = m.y + PADTOP + (maxCol * HEX_H) / 2 + (c - (colsOf(m, r) - 1) / 2) * HEX_H;
+  const pts = [];
+  for (let k = 0; k < 6; k++) {
+    const ang = (Math.PI / 180) * (60 * k);
+    pts.push([cx + HEX_R * Math.cos(ang), cy + HEX_R * Math.sin(ang)]);
+  }
+  return pts;
 }
 
 // three [x,y] vertices of tri cell (r,c) in world coords
@@ -60,6 +98,22 @@ function neighbors(m, r, c) {
     }
     return res;
   }
+  if (m.shape === "hex") {
+    const n = colsOf(m, r);
+    if (c - 1 >= 0) res.push([r, c - 1]);
+    if (c + 1 < n) res.push([r, c + 1]);
+    const y1 = c - (n - 1) / 2;
+    for (const dr of [-1, 1]) {
+      const r2 = r + dr;
+      if (r2 < 0 || r2 >= m.rows) continue;
+      const n2 = colsOf(m, r2);
+      for (let c2 = 0; c2 < n2; c2++) {
+        const y2 = c2 - (n2 - 1) / 2;
+        if (Math.abs(Math.abs(y2 - y1) - 0.5) < 1e-6) res.push([r2, c2]);
+      }
+    }
+    return res;
+  }
   for (const [dr, dc] of NB) {
     const nr = r + dr, nc = c + dc;
     if (nr >= 0 && nc >= 0 && nr < m.rows && nc < m.cols) res.push([nr, nc]);
@@ -67,14 +121,20 @@ function neighbors(m, r, c) {
   return res;
 }
 
-// point-in-triangle (barycentric sign test)
-function pointInTri(px, py, [[ax, ay], [bx, by], [cx, cy]]) {
-  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
-  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
-  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
-  const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
-  const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(hasNeg && hasPos);
+// point-in-convex-polygon (same-sign cross product test; works for triangles and hexagons)
+function pointInPoly(px, py, pts) {
+  let sign = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    const cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+    if (cross !== 0) {
+      const s = cross > 0 ? 1 : -1;
+      if (sign === 0) sign = s;
+      else if (sign !== s) return false;
+    }
+  }
+  return true;
 }
 
 // puzzle metadata (circles/fixedBlack/fixedWhite are 0-indexed [row,col])
@@ -99,21 +159,35 @@ const METAS = [
   // triangular puzzles: circles/fixed listed as cell labels (1..9, reading order)
   { id: 13, x: 4560, y: 0, shape: "tri", rows: 3, triCircles: [3, 5, 7, 9] },
   { id: 14, x: 4920, y: 0, shape: "tri", rows: 3, triCircles: [1, 2, 3, 4, 5, 9], triFixedBlack: [5, 9] },
+  // hexagonal puzzle: a flat-top-hex diamond, columns of 1,2,3,2,1 cells;
+  // circles/fixed listed as cell labels (1..9, reading order top-to-bottom then left-to-right)
+  { id: 15, x: 5320, y: 0, shape: "hex", colCounts: [1, 2, 3, 2, 1], rows: 5, hexCircles: [1, 4, 6, 7, 8, 9] },
 ].map((m) => {
+  const hexOrder = m.shape === "hex" ? hexLabelOrder(m.colCounts) : null;
   const circles = m.shape === "tri"
     ? (m.triCircles || []).map(triLabelRC)
+    : m.shape === "hex"
+    ? (m.hexCircles || []).map((lbl) => hexOrder[lbl - 1])
     : m.circles;
   const fixedBlack = m.shape === "tri"
     ? (m.triFixedBlack || []).map(triLabelRC)
+    : m.shape === "hex"
+    ? (m.hexFixedBlack || []).map((lbl) => hexOrder[lbl - 1])
     : m.fixedBlack;
   const fixedWhite = m.shape === "tri"
     ? (m.triFixedWhite || []).map(triLabelRC)
+    : m.shape === "hex"
+    ? (m.hexFixedWhite || []).map((lbl) => hexOrder[lbl - 1])
     : m.fixedWhite;
   const fw = m.shape === "tri"
     ? m.rows * TRI_S + 2 * PADX
+    : m.shape === "hex"
+    ? (m.colCounts.length - 1) * HEX_COLGAP + HEX_W + 2 * PADX
     : m.cols * T + 2 * PADX;
   const fh = m.shape === "tri"
     ? PADTOP + m.rows * TRI_H + PADBOT
+    : m.shape === "hex"
+    ? PADTOP + Math.max(...m.colCounts) * HEX_H + PADBOT
     : PADTOP + m.rows * T + PADBOT;
   return {
     ...m,
@@ -233,7 +307,13 @@ export default function MonoPuzzle() {
       if (m.shape === "tri") {
         for (let r = 0; r < m.rows; r++)
           for (let c = 0; c < colsOf(m, r); c++)
-            if (pointInTri(wx, wy, triVerts(m, r, c))) return { i, row: r, col: c };
+            if (pointInPoly(wx, wy, triVerts(m, r, c))) return { i, row: r, col: c };
+        continue;
+      }
+      if (m.shape === "hex") {
+        for (let r = 0; r < m.rows; r++)
+          for (let c = 0; c < colsOf(m, r); c++)
+            if (pointInPoly(wx, wy, hexVerts(m, r, c))) return { i, row: r, col: c };
         continue;
       }
       if (wx >= gx && wx < gx + m.cols * T && wy >= gy && wy < gy + m.rows * T) {
@@ -388,6 +468,43 @@ export default function MonoPuzzle() {
                             {hasCircle && (
                               <circle
                                 cx={cx} cy={cy} r={TRI_S * 0.2}
+                                fill="none"
+                                stroke={black ? "#FFFFFF" : INK}
+                                strokeWidth={3}
+                              />
+                            )}
+                          </g>
+                        );
+                      })
+                    )
+                  : m.shape === "hex"
+                  ? Array.from({ length: m.rows }).map((_, r) =>
+                      Array.from({ length: colsOf(m, r) }).map((__, c) => {
+                        const black = grids[i][r][c] === 1;
+                        const hasCircle = m.circleSet.has(r + "," + c);
+                        const isFixed = m.fixedSet.has(r + "," + c);
+                        const v = hexVerts(m, r, c);
+                        const cx = v.reduce((s, p) => s + p[0], 0) / v.length;
+                        const cy = v.reduce((s, p) => s + p[1], 0) / v.length;
+                        return (
+                          <g key={r + "-" + c}>
+                            <polygon
+                              points={v.map(([px, py]) => px + "," + py).join(" ")}
+                              fill={black ? INK : "#FFFFFF"}
+                              stroke={black ? INK : HAIR}
+                              strokeWidth={1}
+                              strokeLinejoin="round"
+                            />
+                            {isFixed && (
+                              <circle
+                                cx={cx - HEX_R * 0.55} cy={cy} r={3}
+                                fill={black ? "#FFFFFF" : INK}
+                                opacity={0.5}
+                              />
+                            )}
+                            {hasCircle && (
+                              <circle
+                                cx={cx} cy={cy} r={HEX_R * 0.4}
                                 fill="none"
                                 stroke={black ? "#FFFFFF" : INK}
                                 strokeWidth={3}
