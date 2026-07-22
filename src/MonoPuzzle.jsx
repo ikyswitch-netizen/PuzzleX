@@ -262,6 +262,9 @@ export default function MonoPuzzle() {
   const svgRef = useRef(null);
   const dragRef = useRef(null);
   const flashTimer = useRef(null);
+  // always-fresh drag handlers, so the native touch listeners (attached once)
+  // never see stale state
+  const handlersRef = useRef({});
 
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [cam, setCam] = useState({ x: 0, y: 0 });
@@ -302,15 +305,39 @@ export default function MonoPuzzle() {
     return () => ro.disconnect();
   }, [ready]);
 
-  // iOS Safari still treats touch-drags as scroll/zoom despite touch-action:none,
-  // firing pointercancel mid-drag. A non-passive touchmove preventDefault stops it,
-  // so a swipe stays a continuous pointer stream (needed for drag-painting).
+  // Touch is handled with native Touch events (not Pointer events): iOS WebKit's
+  // pointermove/setPointerCapture during a touch-drag is unreliable, so a swipe
+  // would only paint the first tile. Native touchmove with a fresh coordinate
+  // stream + preventDefault gives reliable continuous drag-painting on iOS.
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-    const prevent = (e) => e.preventDefault();
-    svg.addEventListener("touchmove", prevent, { passive: false });
-    return () => svg.removeEventListener("touchmove", prevent);
+    const start = (e) => {
+      if (!e.touches.length) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      handlersRef.current.begin?.(t.clientX, t.clientY);
+    };
+    const move = (e) => {
+      if (!e.touches.length) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      handlersRef.current.move?.(t.clientX, t.clientY);
+    };
+    const end = (e) => {
+      e.preventDefault();
+      handlersRef.current.end?.();
+    };
+    svg.addEventListener("touchstart", start, { passive: false });
+    svg.addEventListener("touchmove", move, { passive: false });
+    svg.addEventListener("touchend", end, { passive: false });
+    svg.addEventListener("touchcancel", end, { passive: false });
+    return () => {
+      svg.removeEventListener("touchstart", start);
+      svg.removeEventListener("touchmove", move);
+      svg.removeEventListener("touchend", end);
+      svg.removeEventListener("touchcancel", end);
+    };
   }, []);
 
   const centerW = { x: cam.x + size.w / 2, y: cam.y + size.h / 2 };
@@ -385,14 +412,14 @@ export default function MonoPuzzle() {
     setSolved((prev) => (prev[i] ? prev.map((v, j) => (j === i ? false : v)) : prev));
   }, []);
 
-  const clientToWorld = (e) => {
+  // ---- shared drag logic (used by both mouse/pen pointer events and touch events) ----
+  const worldFrom = (clientX, clientY) => {
     const r = svgRef.current.getBoundingClientRect();
-    return { x: e.clientX - r.left + cam.x, y: e.clientY - r.top + cam.y };
+    return { x: clientX - r.left + cam.x, y: clientY - r.top + cam.y };
   };
 
-  const onPointerDown = (e) => {
-    try { svgRef.current.setPointerCapture(e.pointerId); } catch (_) {}
-    const w = clientToWorld(e);
+  const begin = (clientX, clientY) => {
+    const w = worldFrom(clientX, clientY);
     const btn = buttonAt(w.x, w.y);
     if (btn >= 0) {
       submit(btn);
@@ -406,39 +433,51 @@ export default function MonoPuzzle() {
       painted.add(hit.row + "," + hit.col);
       dragRef.current = { mode: "paint", puzzle: hit.i, painted };
     } else if (firstSolved) {
-      dragRef.current = {
-        mode: "pan",
-        sx: e.clientX, sy: e.clientY,
-        cx: cam.x, cy: cam.y,
-      };
+      dragRef.current = { mode: "pan", sx: clientX, sy: clientY, cx: cam.x, cy: cam.y };
     } else {
       dragRef.current = null;
     }
   };
 
-  const onPointerMove = (e) => {
+  const move = (clientX, clientY) => {
     const d = dragRef.current;
     if (!d) return;
     if (d.mode === "pan") {
-      setCam({ x: d.cx - (e.clientX - d.sx), y: d.cy - (e.clientY - d.sy) });
-    } else {
-      const w = clientToWorld(e);
-      const hit = tileAt(w.x, w.y);
-      if (hit && hit.i === d.puzzle) {
-        const k = hit.row + "," + hit.col;
-        if (!d.painted.has(k)) {
-          d.painted.add(k);
-          toggle(hit.i, hit.row, hit.col);
-        }
+      setCam({ x: d.cx - (clientX - d.sx), y: d.cy - (clientY - d.sy) });
+      return;
+    }
+    const w = worldFrom(clientX, clientY);
+    const hit = tileAt(w.x, w.y);
+    if (hit && hit.i === d.puzzle) {
+      const k = hit.row + "," + hit.col;
+      if (!d.painted.has(k)) {
+        d.painted.add(k);
+        toggle(hit.i, hit.row, hit.col);
       }
     }
   };
 
+  const end = () => { dragRef.current = null; };
+
+  // keep the native touch listeners pointed at the latest closures
+  handlersRef.current = { begin, move, end };
+
+  // mouse/pen only — touch is handled by the native listeners above
+  const onPointerDown = (e) => {
+    if (e.pointerType === "touch") return;
+    try { svgRef.current.setPointerCapture(e.pointerId); } catch (_) {}
+    begin(e.clientX, e.clientY);
+  };
+  const onPointerMove = (e) => {
+    if (e.pointerType === "touch") return;
+    move(e.clientX, e.clientY);
+  };
   const endDrag = (e) => {
-    if (svgRef.current && e.pointerId != null) {
+    if (e && e.pointerType === "touch") return;
+    if (svgRef.current && e && e.pointerId != null) {
       try { svgRef.current.releasePointerCapture(e.pointerId); } catch (_) {}
     }
-    dragRef.current = null;
+    end();
   };
 
   // ---- dot field (shows camera motion over empty space) ----
