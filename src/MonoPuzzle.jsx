@@ -257,6 +257,7 @@ export default function MonoPuzzle() {
   const wrapRef = useRef(null);
   const svgRef = useRef(null);
   const dragRef = useRef(null);
+  const flashTimer = useRef(null);
 
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [cam, setCam] = useState({ x: 0, y: 0 });
@@ -271,6 +272,10 @@ export default function MonoPuzzle() {
     })
   );
   const [ready, setReady] = useState(false);
+  // solved[i] becomes true only after the player submits a correct answer
+  const [solved, setSolved] = useState(() => METAS.map(() => false));
+  // transient result of the last submit: { i, ok } — cleared after a moment
+  const [flash, setFlash] = useState(null);
 
   // measure + initial framing on the first puzzle
   useEffect(() => {
@@ -296,8 +301,20 @@ export default function MonoPuzzle() {
     (m) => centerW.x >= m.x && centerW.x <= m.x + m.fw && centerW.y >= m.y && centerW.y <= m.y + m.fh
   );
 
-  const solvedFlags = grids.map((g, i) => isSolved(METAS[i], g));
-  const firstSolved = solvedFlags[0];
+  const firstSolved = solved[0];
+
+  // evaluate the centered puzzle when the player presses the answer button
+  const submit = useCallback(() => {
+    const i = activeIndex;
+    if (i < 0 || solved[i]) return;
+    const ok = isSolved(METAS[i], grids[i]);
+    if (ok) setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
+    setFlash({ i, ok });
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(null), 1200);
+  }, [activeIndex, solved, grids]);
+
+  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
 
   // world point -> {i,row,col} if inside some puzzle's tile area
   const tileAt = useCallback((wx, wy) => {
@@ -346,7 +363,7 @@ export default function MonoPuzzle() {
     svgRef.current.setPointerCapture(e.pointerId);
     const w = clientToWorld(e);
     const hit = tileAt(w.x, w.y);
-    if (hit && hit.i === activeIndex) {
+    if (hit && hit.i === activeIndex && !solved[hit.i]) {
       const painted = new Set();
       toggle(hit.i, hit.row, hit.col);
       painted.add(hit.row + "," + hit.col);
@@ -420,23 +437,25 @@ export default function MonoPuzzle() {
           )}
           {METAS.map((m, i) => {
             const active = i === activeIndex;
-            const solved = solvedFlags[i];
+            const isDone = solved[i];
+            const wrong = flash && flash.i === i && !flash.ok;
             const gx = m.x + PADX, gy = m.y + PADTOP;
             return (
-              <g key={m.id} opacity={active || solved ? 1 : 0.72}>
+              <g key={m.id} opacity={active || isDone ? 1 : 0.72}>
                 {/* frame */}
                 <rect
                   x={m.x} y={m.y} width={m.fw} height={m.fh} rx={10}
                   fill="none"
-                  stroke={solved ? INK : active ? "#8A8A87" : HAIR}
-                  strokeWidth={solved ? 2 : 1.5}
+                  stroke={isDone ? INK : active ? "#8A8A87" : HAIR}
+                  strokeWidth={isDone ? 2 : 1.5}
+                  strokeDasharray={wrong ? "6 4" : undefined}
                 />
                 {/* index */}
                 <text x={m.x + PADX} y={m.y + 26} fontSize={13} fill={DIM} letterSpacing="2">
                   {String(m.id).padStart(2, "0")}
                 </text>
                 {/* captured mark */}
-                {solved && (
+                {isDone && (
                   <rect x={m.x + m.fw - 26} y={m.y + 15} width={9} height={9} fill={INK} />
                 )}
                 {/* tiles */}
@@ -553,7 +572,7 @@ export default function MonoPuzzle() {
         </g>
 
         {/* SCREEN LAYER: viewfinder reticle at exact center */}
-        <Reticle w={size.w} h={size.h} locked={activeIndex >= 0} solved={activeIndex >= 0 && solvedFlags[activeIndex]} />
+        <Reticle w={size.w} h={size.h} locked={activeIndex >= 0} solved={activeIndex >= 0 && solved[activeIndex]} />
       </svg>
 
       {!firstSolved && (
@@ -562,9 +581,42 @@ export default function MonoPuzzle() {
         </div>
       )}
 
+      {/* answer button + verdict for the centered puzzle */}
+      {activeIndex >= 0 && (
+        <div style={{ position: "absolute", bottom: 44, left: 0, right: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" }}>
+          {flash && flash.i === activeIndex && (
+            <div style={{ fontSize: 12, letterSpacing: 3, color: INK }}>
+              {flash.ok ? "正解 — CORRECT" : "不正解 — TRY AGAIN"}
+            </div>
+          )}
+          {solved[activeIndex] ? (
+            <div style={{ fontSize: 12, letterSpacing: 3, color: INK }}>SOLVED ■</div>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              style={{
+                pointerEvents: "auto",
+                font: "inherit",
+                fontSize: 13,
+                letterSpacing: 3,
+                color: INK,
+                background: "#FFFFFF",
+                border: `1.5px solid ${INK}`,
+                borderRadius: 8,
+                padding: "8px 22px",
+                cursor: "pointer",
+              }}
+            >
+              回答 CHECK
+            </button>
+          )}
+        </div>
+      )}
+
       {/* progress pips */}
       <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 10, pointerEvents: "none" }}>
-        {solvedFlags.map((s, i) => (
+        {solved.map((s, i) => (
           <div key={i} style={{ width: 9, height: 9, borderRadius: 9, background: s ? INK : "transparent", border: `1.5px solid ${s ? INK : DIM}` }} />
         ))}
       </div>
