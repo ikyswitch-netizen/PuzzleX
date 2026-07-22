@@ -15,20 +15,28 @@ const PADBOT = 26;
 
 const NB = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-// puzzle metadata (circles/fixed are 0-indexed [row,col])
+// puzzle metadata (circles/fixedBlack/fixedWhite are 0-indexed [row,col])
 const METAS = [
   { id: 1, x: 0,    y: 0, rows: 3, cols: 3, circles: [[0, 0], [1, 2]] },
   { id: 2, x: 380,  y: 0, rows: 3, cols: 3, circles: [[0, 0], [0, 2], [2, 0], [2, 2]] },
   { id: 3, x: 760,  y: 0, rows: 3, cols: 3, circles: [[0, 0], [1, 1], [2, 0]] },
-  { id: 4, x: 1140, y: 0, rows: 3, cols: 3, circles: [[1, 0], [1, 2]], fixed: [[2, 1]] },
+  { id: 4, x: 1140, y: 0, rows: 3, cols: 3, circles: [[1, 0], [1, 2]], fixedBlack: [[2, 2]] },
   { id: 5, x: 1520, y: 0, rows: 3, cols: 3, circles: [[1, 1]] },
-  { id: 6, x: 1900, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixed: [[0, 0]] },
+  { id: 6, x: 1900, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixedBlack: [[0, 0]] },
+  { id: 7, x: 2280, y: 0, rows: 3, cols: 3, circles: [[0, 1], [2, 1]], fixedWhite: [[0, 1], [2, 1]] },
+  { id: 8, x: 2660, y: 0, rows: 3, cols: 3, circles: [[2, 0], [2, 1], [1, 0]] },
 ].map((m) => ({
   ...m,
   fw: m.cols * T + 2 * PADX,
   fh: PADTOP + m.rows * T + PADBOT,
   circleSet: new Set(m.circles.map(([r, c]) => r + "," + c)),
-  fixedSet: new Set((m.fixed || []).map(([r, c]) => r + "," + c)),
+  fixedSet: new Set(
+    [...(m.fixedBlack || []), ...(m.fixedWhite || [])].map(([r, c]) => r + "," + c)
+  ),
+  fixedColor: new Map([
+    ...(m.fixedBlack || []).map(([r, c]) => [r + "," + c, 1]),
+    ...(m.fixedWhite || []).map(([r, c]) => [r + "," + c, 0]),
+  ]),
 }));
 
 const frameCenter = (m) => ({ x: m.x + m.fw / 2, y: m.y + m.fh / 2 });
@@ -79,9 +87,9 @@ export default function MonoPuzzle() {
   const [grids, setGrids] = useState(() =>
     METAS.map((m) => {
       const g = Array.from({ length: m.rows }, () => Array(m.cols).fill(0));
-      m.fixedSet.forEach((k) => {
+      m.fixedColor.forEach((color, k) => {
         const [r, c] = k.split(",").map(Number);
-        g[r][c] = 1; // fixed tiles are black
+        g[r][c] = color;
       });
       return g;
     })
