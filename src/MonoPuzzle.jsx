@@ -96,13 +96,19 @@ const METAS = [
       [2, 0], [2, 3],
       [3, 0], [3, 1], [3, 2], [3, 3],
     ] },
-  // triangular puzzles: circles listed as cell labels (1..9, reading order)
-  { id: 13, x: 4560, y: 0, shape: "tri", rows: 3, triCircles: [1, 5, 9] },
-  { id: 14, x: 4920, y: 0, shape: "tri", rows: 3, triCircles: [3, 5, 7, 9] },
+  // triangular puzzles: circles/fixed listed as cell labels (1..9, reading order)
+  { id: 13, x: 4560, y: 0, shape: "tri", rows: 3, triCircles: [3, 5, 7, 9] },
+  { id: 14, x: 4920, y: 0, shape: "tri", rows: 3, triCircles: [1, 2, 3, 4, 5, 9], triFixedBlack: [5, 9] },
 ].map((m) => {
   const circles = m.shape === "tri"
     ? (m.triCircles || []).map(triLabelRC)
     : m.circles;
+  const fixedBlack = m.shape === "tri"
+    ? (m.triFixedBlack || []).map(triLabelRC)
+    : m.fixedBlack;
+  const fixedWhite = m.shape === "tri"
+    ? (m.triFixedWhite || []).map(triLabelRC)
+    : m.fixedWhite;
   const fw = m.shape === "tri"
     ? m.rows * TRI_S + 2 * PADX
     : m.cols * T + 2 * PADX;
@@ -112,15 +118,17 @@ const METAS = [
   return {
     ...m,
     circles,
+    fixedBlack,
+    fixedWhite,
     fw,
     fh,
     circleSet: new Set(circles.map(([r, c]) => r + "," + c)),
     fixedSet: new Set(
-      [...(m.fixedBlack || []), ...(m.fixedWhite || [])].map(([r, c]) => r + "," + c)
+      [...(fixedBlack || []), ...(fixedWhite || [])].map(([r, c]) => r + "," + c)
     ),
     fixedColor: new Map([
-      ...(m.fixedBlack || []).map(([r, c]) => [r + "," + c, 1]),
-      ...(m.fixedWhite || []).map(([r, c]) => [r + "," + c, 0]),
+      ...(fixedBlack || []).map(([r, c]) => [r + "," + c, 1]),
+      ...(fixedWhite || []).map(([r, c]) => [r + "," + c, 0]),
     ]),
   };
 });
@@ -357,6 +365,7 @@ export default function MonoPuzzle() {
                       Array.from({ length: colsOf(m, r) }).map((__, c) => {
                         const black = grids[i][r][c] === 1;
                         const hasCircle = m.circleSet.has(r + "," + c);
+                        const isFixed = m.fixedSet.has(r + "," + c);
                         const v = triVerts(m, r, c);
                         const cx = (v[0][0] + v[1][0] + v[2][0]) / 3;
                         const cy = (v[0][1] + v[1][1] + v[2][1]) / 3;
@@ -369,6 +378,13 @@ export default function MonoPuzzle() {
                               strokeWidth={1}
                               strokeLinejoin="round"
                             />
+                            {isFixed && (
+                              <circle
+                                cx={cx} cy={cy - TRI_H * 0.28} r={3}
+                                fill={black ? "#FFFFFF" : INK}
+                                opacity={0.5}
+                              />
+                            )}
                             {hasCircle && (
                               <circle
                                 cx={cx} cy={cy} r={TRI_S * 0.2}
