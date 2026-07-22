@@ -276,8 +276,10 @@ export default function MonoPuzzle() {
     })
   );
   const [ready, setReady] = useState(false);
-  // solved[i] becomes true only after the player submits a correct answer
+  // solved[i]: last check passed and the board hasn't been edited since
   const [solved, setSolved] = useState(() => METAS.map(() => false));
+  // once puzzle 1 is solved, scrolling stays unlocked even if it's edited later
+  const [unlocked, setUnlocked] = useState(false);
   // transient result of the last submit: { i, ok } — cleared after a moment
   const [flash, setFlash] = useState(null);
 
@@ -305,13 +307,16 @@ export default function MonoPuzzle() {
     (m) => centerW.x >= m.x && centerW.x <= m.x + m.fw && centerW.y >= m.y && centerW.y <= m.y + m.fh
   );
 
-  const firstSolved = solved[0];
+  const firstSolved = unlocked;
 
   // evaluate a puzzle when the player presses its answer button
   const submit = useCallback((i) => {
     if (i < 0 || solved[i]) return;
     const ok = isSolved(METAS[i], grids[i]);
-    if (ok) setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
+    if (ok) {
+      setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
+      if (i === 0) setUnlocked(true);
+    }
     setFlash({ i, ok, t: Date.now() });
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = setTimeout(() => setFlash(null), 500);
@@ -365,6 +370,8 @@ export default function MonoPuzzle() {
       next[i] = g2;
       return next;
     });
+    // editing a checked puzzle marks it unverified again (button reappears)
+    setSolved((prev) => (prev[i] ? prev.map((v, j) => (j === i ? false : v)) : prev));
   }, []);
 
   const clientToWorld = (e) => {
@@ -382,7 +389,7 @@ export default function MonoPuzzle() {
       return;
     }
     const hit = tileAt(w.x, w.y);
-    if (hit && hit.i === activeIndex && !solved[hit.i]) {
+    if (hit && hit.i === activeIndex) {
       const painted = new Set();
       toggle(hit.i, hit.row, hit.col);
       painted.add(hit.row + "," + hit.col);
