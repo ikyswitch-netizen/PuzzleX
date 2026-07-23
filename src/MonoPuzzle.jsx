@@ -257,6 +257,45 @@ function isSolved(m, grid) {
   return true;
 }
 
+// which cells break the rules — used to highlight mistakes after a wrong answer.
+// Returns a Set of "r,c" keys: circled cells without exactly one same-colored
+// neighbor, plus every black cell outside the largest connected black region.
+function findViolations(m, grid) {
+  const key = (r, c) => r + "," + c;
+  const bad = new Set();
+  for (const [r, c] of m.circles) {
+    const col = grid[r][c];
+    let cnt = 0;
+    for (const [nr, nc] of neighbors(m, r, c)) if (grid[nr][nc] === col) cnt++;
+    if (cnt !== 1) bad.add(key(r, c));
+  }
+  const seen = new Set();
+  const comps = [];
+  for (let r = 0; r < m.rows; r++)
+    for (let c = 0; c < colsOf(m, r); c++) {
+      if (grid[r][c] !== 1 || seen.has(key(r, c))) continue;
+      const comp = [];
+      const st = [[r, c]];
+      seen.add(key(r, c));
+      while (st.length) {
+        const [cr, cc] = st.pop();
+        comp.push([cr, cc]);
+        for (const [nr, nc] of neighbors(m, cr, cc))
+          if (grid[nr][nc] === 1 && !seen.has(key(nr, nc))) {
+            seen.add(key(nr, nc));
+            st.push([nr, nc]);
+          }
+      }
+      comps.push(comp);
+    }
+  if (comps.length > 1) {
+    comps.sort((a, b) => b.length - a.length);
+    for (let ci = 1; ci < comps.length; ci++)
+      for (const [r, c] of comps[ci]) bad.add(key(r, c));
+  }
+  return bad;
+}
+
 export default function MonoPuzzle() {
   const wrapRef = useRef(null);
   const svgRef = useRef(null);
@@ -285,6 +324,9 @@ export default function MonoPuzzle() {
   const [unlocked, setUnlocked] = useState(false);
   // transient result of the last submit: { i, ok } — cleared after a moment
   const [flash, setFlash] = useState(null);
+  // per-puzzle Set of rule-breaking cell keys after a wrong answer (persists
+  // until the puzzle is edited or answered correctly)
+  const [violations, setViolations] = useState(() => METAS.map(() => null));
 
   // measure + initial framing on the first puzzle
   useEffect(() => {
@@ -354,6 +396,10 @@ export default function MonoPuzzle() {
     if (ok) {
       setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
       if (i === 0) setUnlocked(true);
+      setViolations((prev) => (prev[i] ? prev.map((v, j) => (j === i ? null : v)) : prev));
+    } else {
+      const bad = findViolations(METAS[i], grids[i]);
+      setViolations((prev) => prev.map((v, j) => (j === i ? bad : v)));
     }
     setFlash({ i, ok, t: Date.now() });
     if (flashTimer.current) clearTimeout(flashTimer.current);
@@ -410,6 +456,8 @@ export default function MonoPuzzle() {
     });
     // editing a checked puzzle marks it unverified again (button reappears)
     setSolved((prev) => (prev[i] ? prev.map((v, j) => (j === i ? false : v)) : prev));
+    // clear mistake highlights for the puzzle being edited
+    setViolations((prev) => (prev[i] ? prev.map((v, j) => (j === i ? null : v)) : prev));
   }, []);
 
   // ---- shared drag logic (used by both mouse/pen pointer events and touch events) ----
@@ -501,6 +549,8 @@ export default function MonoPuzzle() {
         .puz-pulse { animation: puzPulse .42s ease; transform-box: fill-box; transform-origin: center; }
         @keyframes hintBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
         .hint-bob { animation: hintBob 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+        @keyframes warnPulse { 0%,100%{opacity:1} 50%{opacity:.2} }
+        .warn { animation: warnPulse .9s ease-in-out infinite; }
       `}</style>
       <svg
         ref={svgRef}
@@ -524,6 +574,7 @@ export default function MonoPuzzle() {
             const isDone = solved[i];
             const wrong = flash && flash.i === i && !flash.ok;
             const right = flash && flash.i === i && flash.ok;
+            const vio = violations[i];
             const gx = m.x + PADX, gy = m.y + PADTOP;
             const b = buttonRect(m);
             return (
@@ -551,6 +602,7 @@ export default function MonoPuzzle() {
                         const black = grids[i][r][c] === 1;
                         const hasCircle = m.circleSet.has(r + "," + c);
                         const isFixed = m.fixedSet.has(r + "," + c);
+                        const isBad = vio && vio.has(r + "," + c);
                         const v = triVerts(m, r, c);
                         const cx = (v[0][0] + v[1][0] + v[2][0]) / 3;
                         const cy = (v[0][1] + v[1][1] + v[2][1]) / 3;
@@ -575,7 +627,18 @@ export default function MonoPuzzle() {
                                 cx={cx} cy={cy} r={TRI_S * 0.2}
                                 fill="none"
                                 stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={3}
+                                strokeWidth={hasCircle && isBad ? 4.5 : 3}
+                                className={isBad ? "warn" : undefined}
+                              />
+                            )}
+                            {isBad && (
+                              <polygon
+                                points={v.map(([px, py]) => px + "," + py).join(" ")}
+                                fill="none"
+                                stroke={black ? "#FFFFFF" : INK}
+                                strokeWidth={2.5}
+                                strokeLinejoin="round"
+                                className="warn"
                               />
                             )}
                           </g>
@@ -588,6 +651,7 @@ export default function MonoPuzzle() {
                         const black = grids[i][r][c] === 1;
                         const hasCircle = m.circleSet.has(r + "," + c);
                         const isFixed = m.fixedSet.has(r + "," + c);
+                        const isBad = vio && vio.has(r + "," + c);
                         const v = hexVerts(m, r, c);
                         const cx = v.reduce((s, p) => s + p[0], 0) / v.length;
                         const cy = v.reduce((s, p) => s + p[1], 0) / v.length;
@@ -612,7 +676,18 @@ export default function MonoPuzzle() {
                                 cx={cx} cy={cy} r={HEX_R * 0.4}
                                 fill="none"
                                 stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={3}
+                                strokeWidth={hasCircle && isBad ? 4.5 : 3}
+                                className={isBad ? "warn" : undefined}
+                              />
+                            )}
+                            {isBad && (
+                              <polygon
+                                points={v.map(([px, py]) => px + "," + py).join(" ")}
+                                fill="none"
+                                stroke={black ? "#FFFFFF" : INK}
+                                strokeWidth={2.5}
+                                strokeLinejoin="round"
+                                className="warn"
                               />
                             )}
                           </g>
@@ -625,6 +700,7 @@ export default function MonoPuzzle() {
                         const tx = gx + c * T, ty = gy + r * T;
                         const hasCircle = m.circleSet.has(r + "," + c);
                         const isFixed = m.fixedSet.has(r + "," + c);
+                        const isBad = vio && vio.has(r + "," + c);
                         return (
                           <g key={r + "-" + c}>
                             <rect
@@ -645,7 +721,17 @@ export default function MonoPuzzle() {
                                 cx={tx + T / 2} cy={ty + T / 2} r={T * 0.27}
                                 fill="none"
                                 stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={3}
+                                strokeWidth={hasCircle && isBad ? 4.5 : 3}
+                                className={isBad ? "warn" : undefined}
+                              />
+                            )}
+                            {isBad && (
+                              <rect
+                                x={tx + 4} y={ty + 4} width={T - 8} height={T - 8} rx={3}
+                                fill="none"
+                                stroke={black ? "#FFFFFF" : INK}
+                                strokeWidth={2.5}
+                                className="warn"
                               />
                             )}
                           </g>
