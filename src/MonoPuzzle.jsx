@@ -259,24 +259,27 @@ function isSolved(m, grid) {
 }
 
 // which cells break the rules — used to highlight mistakes after a wrong answer.
-// Returns a Set of "r,c" keys: circled cells without exactly one same-colored
-// neighbor, plus (when the black cells don't form a single connected region)
-// every black cell, since none of the disconnected pieces is the region.
+// Returns two Sets of "r,c" keys, kept separate so each violation reddens the
+// right thing: `circles` = circled cells without exactly one same-colored
+// neighbor (the ring goes red); `blacks` = every black cell when the black
+// cells don't form one connected region (the tile goes red). A cell can be in
+// both.
 function findViolations(m, grid) {
   const key = (r, c) => r + "," + c;
-  const bad = new Set();
+  const circles = new Set();
+  const blacks = new Set();
   for (const [r, c] of m.circles) {
     const col = grid[r][c];
     let cnt = 0;
     for (const [nr, nc] of neighbors(m, r, c)) if (grid[nr][nc] === col) cnt++;
-    if (cnt !== 1) bad.add(key(r, c));
+    if (cnt !== 1) circles.add(key(r, c));
   }
-  const blacks = [];
+  const blist = [];
   for (let r = 0; r < m.rows; r++)
-    for (let c = 0; c < colsOf(m, r); c++) if (grid[r][c] === 1) blacks.push([r, c]);
-  if (blacks.length > 0) {
-    const seen = new Set([key(...blacks[0])]);
-    const st = [blacks[0]];
+    for (let c = 0; c < colsOf(m, r); c++) if (grid[r][c] === 1) blist.push([r, c]);
+  if (blist.length > 0) {
+    const seen = new Set([key(...blist[0])]);
+    const st = [blist[0]];
     while (st.length) {
       const [cr, cc] = st.pop();
       for (const [nr, nc] of neighbors(m, cr, cc))
@@ -285,10 +288,10 @@ function findViolations(m, grid) {
           st.push([nr, nc]);
         }
     }
-    if (seen.size !== blacks.length)
-      for (const [r, c] of blacks) bad.add(key(r, c));
+    if (seen.size !== blist.length)
+      for (const [r, c] of blist) blacks.add(key(r, c));
   }
-  return bad;
+  return { circles, blacks };
 }
 
 export default function MonoPuzzle() {
@@ -588,7 +591,8 @@ export default function MonoPuzzle() {
                         const black = grids[i][r][c] === 1;
                         const hasCircle = m.circleSet.has(r + "," + c);
                         const isFixed = m.fixedSet.has(r + "," + c);
-                        const isBad = vio && vio.has(r + "," + c);
+                        const badC = vio && vio.circles.has(r + "," + c);
+                        const badB = vio && vio.blacks.has(r + "," + c);
                         const v = triVerts(m, r, c);
                         const cx = (v[0][0] + v[1][0] + v[2][0]) / 3;
                         const cy = (v[0][1] + v[1][1] + v[2][1]) / 3;
@@ -608,15 +612,7 @@ export default function MonoPuzzle() {
                                 opacity={0.5}
                               />
                             )}
-                            {hasCircle && (
-                              <circle
-                                cx={cx} cy={cy} r={TRI_S * 0.2}
-                                fill="none"
-                                stroke={isBad ? RED : black ? "#FFFFFF" : INK}
-                                strokeWidth={isBad ? 4 : 3}
-                              />
-                            )}
-                            {isBad && !hasCircle && (
+                            {badB && (
                               <polygon
                                 points={v.map(([px, py]) => px + "," + py).join(" ")}
                                 fill={RED}
@@ -624,6 +620,14 @@ export default function MonoPuzzle() {
                                 stroke={RED}
                                 strokeWidth={1}
                                 strokeLinejoin="round"
+                              />
+                            )}
+                            {hasCircle && (
+                              <circle
+                                cx={cx} cy={cy} r={TRI_S * 0.2}
+                                fill="none"
+                                stroke={badC ? RED : black ? "#FFFFFF" : INK}
+                                strokeWidth={badC ? 4 : 3}
                               />
                             )}
                           </g>
@@ -636,7 +640,8 @@ export default function MonoPuzzle() {
                         const black = grids[i][r][c] === 1;
                         const hasCircle = m.circleSet.has(r + "," + c);
                         const isFixed = m.fixedSet.has(r + "," + c);
-                        const isBad = vio && vio.has(r + "," + c);
+                        const badC = vio && vio.circles.has(r + "," + c);
+                        const badB = vio && vio.blacks.has(r + "," + c);
                         const v = hexVerts(m, r, c);
                         const cx = v.reduce((s, p) => s + p[0], 0) / v.length;
                         const cy = v.reduce((s, p) => s + p[1], 0) / v.length;
@@ -656,15 +661,7 @@ export default function MonoPuzzle() {
                                 opacity={0.5}
                               />
                             )}
-                            {hasCircle && (
-                              <circle
-                                cx={cx} cy={cy} r={HEX_R * 0.4}
-                                fill="none"
-                                stroke={isBad ? RED : black ? "#FFFFFF" : INK}
-                                strokeWidth={isBad ? 4 : 3}
-                              />
-                            )}
-                            {isBad && !hasCircle && (
+                            {badB && (
                               <polygon
                                 points={v.map(([px, py]) => px + "," + py).join(" ")}
                                 fill={RED}
@@ -672,6 +669,14 @@ export default function MonoPuzzle() {
                                 stroke={RED}
                                 strokeWidth={1}
                                 strokeLinejoin="round"
+                              />
+                            )}
+                            {hasCircle && (
+                              <circle
+                                cx={cx} cy={cy} r={HEX_R * 0.4}
+                                fill="none"
+                                stroke={badC ? RED : black ? "#FFFFFF" : INK}
+                                strokeWidth={badC ? 4 : 3}
                               />
                             )}
                           </g>
@@ -684,7 +689,8 @@ export default function MonoPuzzle() {
                         const tx = gx + c * T, ty = gy + r * T;
                         const hasCircle = m.circleSet.has(r + "," + c);
                         const isFixed = m.fixedSet.has(r + "," + c);
-                        const isBad = vio && vio.has(r + "," + c);
+                        const badC = vio && vio.circles.has(r + "," + c);
+                        const badB = vio && vio.blacks.has(r + "," + c);
                         return (
                           <g key={r + "-" + c}>
                             <rect
@@ -700,19 +706,19 @@ export default function MonoPuzzle() {
                                 opacity={0.5}
                               />
                             )}
-                            {hasCircle && (
-                              <circle
-                                cx={tx + T / 2} cy={ty + T / 2} r={T * 0.27}
-                                fill="none"
-                                stroke={isBad ? RED : black ? "#FFFFFF" : INK}
-                                strokeWidth={isBad ? 4 : 3}
-                              />
-                            )}
-                            {isBad && !hasCircle && (
+                            {badB && (
                               <rect
                                 x={tx + 1} y={ty + 1} width={T - 2} height={T - 2} rx={4}
                                 fill={RED}
                                 opacity={0.6}
+                              />
+                            )}
+                            {hasCircle && (
+                              <circle
+                                cx={tx + T / 2} cy={ty + T / 2} r={T * 0.27}
+                                fill="none"
+                                stroke={badC ? RED : black ? "#FFFFFF" : INK}
+                                strokeWidth={badC ? 4 : 3}
                               />
                             )}
                           </g>
