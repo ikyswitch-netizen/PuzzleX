@@ -612,11 +612,11 @@ export default function MonoPuzzle() {
                               <circle
                                 cx={cx} cy={cy} r={TRI_S * 0.2}
                                 fill="none"
-                                stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={3}
+                                stroke={isBad ? RED : black ? "#FFFFFF" : INK}
+                                strokeWidth={isBad ? 4 : 3}
                               />
                             )}
-                            {isBad && (
+                            {isBad && !hasCircle && (
                               <polygon
                                 points={v.map(([px, py]) => px + "," + py).join(" ")}
                                 fill={RED}
@@ -660,11 +660,11 @@ export default function MonoPuzzle() {
                               <circle
                                 cx={cx} cy={cy} r={HEX_R * 0.4}
                                 fill="none"
-                                stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={3}
+                                stroke={isBad ? RED : black ? "#FFFFFF" : INK}
+                                strokeWidth={isBad ? 4 : 3}
                               />
                             )}
-                            {isBad && (
+                            {isBad && !hasCircle && (
                               <polygon
                                 points={v.map(([px, py]) => px + "," + py).join(" ")}
                                 fill={RED}
@@ -704,11 +704,11 @@ export default function MonoPuzzle() {
                               <circle
                                 cx={tx + T / 2} cy={ty + T / 2} r={T * 0.27}
                                 fill="none"
-                                stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={3}
+                                stroke={isBad ? RED : black ? "#FFFFFF" : INK}
+                                strokeWidth={isBad ? 4 : 3}
                               />
                             )}
-                            {isBad && (
+                            {isBad && !hasCircle && (
                               <rect
                                 x={tx + 1} y={ty + 1} width={T - 2} height={T - 2} rx={4}
                                 fill={RED}
