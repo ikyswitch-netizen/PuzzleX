@@ -6,6 +6,7 @@ const INK = "#141414";
 const HAIR = "#D9D9D7";
 const DOT = "#E4E4E2";
 const DIM = "#B5B5B2";
+const RED = "#E23B3B";   // brief error flash on rule-breaking cells
 
 // ---- geometry ----
 const T = 62;       // tile size
@@ -259,7 +260,8 @@ function isSolved(m, grid) {
 
 // which cells break the rules — used to highlight mistakes after a wrong answer.
 // Returns a Set of "r,c" keys: circled cells without exactly one same-colored
-// neighbor, plus every black cell outside the largest connected black region.
+// neighbor, plus (when the black cells don't form a single connected region)
+// every black cell, since none of the disconnected pieces is the region.
 function findViolations(m, grid) {
   const key = (r, c) => r + "," + c;
   const bad = new Set();
@@ -269,29 +271,22 @@ function findViolations(m, grid) {
     for (const [nr, nc] of neighbors(m, r, c)) if (grid[nr][nc] === col) cnt++;
     if (cnt !== 1) bad.add(key(r, c));
   }
-  const seen = new Set();
-  const comps = [];
+  const blacks = [];
   for (let r = 0; r < m.rows; r++)
-    for (let c = 0; c < colsOf(m, r); c++) {
-      if (grid[r][c] !== 1 || seen.has(key(r, c))) continue;
-      const comp = [];
-      const st = [[r, c]];
-      seen.add(key(r, c));
-      while (st.length) {
-        const [cr, cc] = st.pop();
-        comp.push([cr, cc]);
-        for (const [nr, nc] of neighbors(m, cr, cc))
-          if (grid[nr][nc] === 1 && !seen.has(key(nr, nc))) {
-            seen.add(key(nr, nc));
-            st.push([nr, nc]);
-          }
-      }
-      comps.push(comp);
+    for (let c = 0; c < colsOf(m, r); c++) if (grid[r][c] === 1) blacks.push([r, c]);
+  if (blacks.length > 0) {
+    const seen = new Set([key(...blacks[0])]);
+    const st = [blacks[0]];
+    while (st.length) {
+      const [cr, cc] = st.pop();
+      for (const [nr, nc] of neighbors(m, cr, cc))
+        if (grid[nr][nc] === 1 && !seen.has(key(nr, nc))) {
+          seen.add(key(nr, nc));
+          st.push([nr, nc]);
+        }
     }
-  if (comps.length > 1) {
-    comps.sort((a, b) => b.length - a.length);
-    for (let ci = 1; ci < comps.length; ci++)
-      for (const [r, c] of comps[ci]) bad.add(key(r, c));
+    if (seen.size !== blacks.length)
+      for (const [r, c] of blacks) bad.add(key(r, c));
   }
   return bad;
 }
@@ -322,11 +317,9 @@ export default function MonoPuzzle() {
   const [solved, setSolved] = useState(() => METAS.map(() => false));
   // once puzzle 1 is solved, scrolling stays unlocked even if it's edited later
   const [unlocked, setUnlocked] = useState(false);
-  // transient result of the last submit: { i, ok } — cleared after a moment
+  // transient result of the last submit: { i, ok, bad } — a brief flash; on a
+  // wrong answer `bad` is the Set of rule-breaking cell keys (flashed red)
   const [flash, setFlash] = useState(null);
-  // per-puzzle Set of rule-breaking cell keys after a wrong answer (persists
-  // until the puzzle is edited or answered correctly)
-  const [violations, setViolations] = useState(() => METAS.map(() => null));
 
   // measure + initial framing on the first puzzle
   useEffect(() => {
@@ -396,14 +389,11 @@ export default function MonoPuzzle() {
     if (ok) {
       setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
       if (i === 0) setUnlocked(true);
-      setViolations((prev) => (prev[i] ? prev.map((v, j) => (j === i ? null : v)) : prev));
-    } else {
-      const bad = findViolations(METAS[i], grids[i]);
-      setViolations((prev) => prev.map((v, j) => (j === i ? bad : v)));
     }
-    setFlash({ i, ok, t: Date.now() });
+    const bad = ok ? null : findViolations(METAS[i], grids[i]);
+    setFlash({ i, ok, bad, t: Date.now() });
     if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setFlash(null), 500);
+    flashTimer.current = setTimeout(() => setFlash(null), ok ? 500 : 700);
   }, [solved, grids]);
 
   // world point -> puzzle index if inside its (unsolved) answer button
@@ -456,8 +446,6 @@ export default function MonoPuzzle() {
     });
     // editing a checked puzzle marks it unverified again (button reappears)
     setSolved((prev) => (prev[i] ? prev.map((v, j) => (j === i ? false : v)) : prev));
-    // clear mistake highlights for the puzzle being edited
-    setViolations((prev) => (prev[i] ? prev.map((v, j) => (j === i ? null : v)) : prev));
   }, []);
 
   // ---- shared drag logic (used by both mouse/pen pointer events and touch events) ----
@@ -549,8 +537,6 @@ export default function MonoPuzzle() {
         .puz-pulse { animation: puzPulse .42s ease; transform-box: fill-box; transform-origin: center; }
         @keyframes hintBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
         .hint-bob { animation: hintBob 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
-        @keyframes warnPulse { 0%,100%{opacity:1} 50%{opacity:.2} }
-        .warn { animation: warnPulse .9s ease-in-out infinite; }
       `}</style>
       <svg
         ref={svgRef}
@@ -574,7 +560,7 @@ export default function MonoPuzzle() {
             const isDone = solved[i];
             const wrong = flash && flash.i === i && !flash.ok;
             const right = flash && flash.i === i && flash.ok;
-            const vio = violations[i];
+            const vio = wrong ? flash.bad : null;
             const gx = m.x + PADX, gy = m.y + PADTOP;
             const b = buttonRect(m);
             return (
@@ -627,18 +613,17 @@ export default function MonoPuzzle() {
                                 cx={cx} cy={cy} r={TRI_S * 0.2}
                                 fill="none"
                                 stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={hasCircle && isBad ? 4.5 : 3}
-                                className={isBad ? "warn" : undefined}
+                                strokeWidth={3}
                               />
                             )}
                             {isBad && (
                               <polygon
                                 points={v.map(([px, py]) => px + "," + py).join(" ")}
-                                fill="none"
-                                stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={2.5}
+                                fill={RED}
+                                opacity={0.6}
+                                stroke={RED}
+                                strokeWidth={1}
                                 strokeLinejoin="round"
-                                className="warn"
                               />
                             )}
                           </g>
@@ -676,18 +661,17 @@ export default function MonoPuzzle() {
                                 cx={cx} cy={cy} r={HEX_R * 0.4}
                                 fill="none"
                                 stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={hasCircle && isBad ? 4.5 : 3}
-                                className={isBad ? "warn" : undefined}
+                                strokeWidth={3}
                               />
                             )}
                             {isBad && (
                               <polygon
                                 points={v.map(([px, py]) => px + "," + py).join(" ")}
-                                fill="none"
-                                stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={2.5}
+                                fill={RED}
+                                opacity={0.6}
+                                stroke={RED}
+                                strokeWidth={1}
                                 strokeLinejoin="round"
-                                className="warn"
                               />
                             )}
                           </g>
@@ -721,17 +705,14 @@ export default function MonoPuzzle() {
                                 cx={tx + T / 2} cy={ty + T / 2} r={T * 0.27}
                                 fill="none"
                                 stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={hasCircle && isBad ? 4.5 : 3}
-                                className={isBad ? "warn" : undefined}
+                                strokeWidth={3}
                               />
                             )}
                             {isBad && (
                               <rect
-                                x={tx + 4} y={ty + 4} width={T - 8} height={T - 8} rx={3}
-                                fill="none"
-                                stroke={black ? "#FFFFFF" : INK}
-                                strokeWidth={2.5}
-                                className="warn"
+                                x={tx + 1} y={ty + 1} width={T - 2} height={T - 2} rx={4}
+                                fill={RED}
+                                opacity={0.6}
                               />
                             )}
                           </g>
