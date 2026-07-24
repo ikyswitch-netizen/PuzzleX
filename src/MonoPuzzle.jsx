@@ -147,22 +147,23 @@ const METAS = [
   { id: 5,  x: 1520, y: 0, rows: 3, cols: 3, circles: [[1, 0], [1, 2]], fixedBlack: [[2, 2]] },
   { id: 6,  x: 1900, y: 0, rows: 3, cols: 3, circles: [[1, 1]] },
   { id: 7,  x: 2280, y: 0, rows: 3, cols: 3, circles: [[0, 0], [0, 2], [2, 0], [2, 2]] },
-  { id: 8,  x: 2660, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixedBlack: [[0, 0]] },
-  { id: 9,  x: 3040, y: 0, rows: 3, cols: 3, circles: [[0, 1], [2, 1]], fixedWhite: [[0, 1], [2, 1]] },
-  { id: 10, x: 3420, y: 0, rows: 3, cols: 3, circles: [[2, 0], [2, 1], [1, 0]] },
-  { id: 11, x: 3800, y: 0, rows: 4, cols: 4, circles: [[1, 2], [1, 3], [2, 2], [2, 3]] },
-  { id: 12, x: 4180, y: 0, rows: 4, cols: 4, circles: [
+  { id: 8,  x: 2660, y: 0, rows: 3, cols: 3, circles: [[0, 0], [0, 2], [2, 1]] },
+  { id: 9,  x: 3040, y: 0, rows: 3, cols: 3, circles: [[1, 1], [2, 2]], fixedBlack: [[0, 0]] },
+  { id: 10, x: 3420, y: 0, rows: 3, cols: 3, circles: [[0, 1], [2, 1]], fixedWhite: [[0, 1], [2, 1]] },
+  { id: 11, x: 3800, y: 0, rows: 3, cols: 3, circles: [[2, 0], [2, 1], [1, 0]] },
+  { id: 12, x: 4180, y: 0, rows: 4, cols: 4, circles: [[1, 2], [1, 3], [2, 2], [2, 3]] },
+  { id: 13, x: 4560, y: 0, rows: 4, cols: 4, circles: [
       [0, 0], [0, 1], [0, 2], [0, 3],
       [1, 0], [1, 3],
       [2, 0], [2, 3],
       [3, 0], [3, 1], [3, 2], [3, 3],
     ] },
   // triangular puzzles: circles/fixed listed as cell labels (1..9, reading order)
-  { id: 13, x: 4560, y: 0, shape: "tri", rows: 3, triCircles: [3, 5, 7, 9] },
-  { id: 14, x: 4920, y: 0, shape: "tri", rows: 3, triCircles: [1, 2, 3, 4, 5, 9], triFixedBlack: [5, 9] },
+  { id: 14, x: 4940, y: 0, shape: "tri", rows: 3, triCircles: [3, 5, 7, 9] },
+  { id: 15, x: 5300, y: 0, shape: "tri", rows: 3, triCircles: [1, 2, 3, 4, 5, 9], triFixedBlack: [5, 9] },
   // hexagonal puzzle: a flat-top-hex diamond, columns of 1,2,3,2,1 cells;
   // circles/fixed listed as cell labels (1..9, reading order top-to-bottom then left-to-right)
-  { id: 15, x: 5320, y: 0, shape: "hex", colCounts: [1, 2, 3, 2, 1], rows: 5, hexCircles: [1, 4, 6, 7, 8, 9] },
+  { id: 16, x: 5700, y: 0, shape: "hex", colCounts: [1, 2, 3, 2, 1], rows: 5, hexCircles: [1, 4, 6, 7, 8, 9] },
 ].map((m) => {
   const hexOrder = m.shape === "hex" ? hexLabelOrder(m.colCounts) : null;
   const circles = m.shape === "tri"
