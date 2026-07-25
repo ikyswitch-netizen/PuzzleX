@@ -7,6 +7,8 @@ const HAIR = "#D9D9D7";
 const DOT = "#E4E4E2";
 const DIM = "#B5B5B2";
 const RED = "#E23B3B";   // brief error flash on rule-breaking cells
+const GOLD = "#D4A72C";  // frame color once every puzzle is solved
+const GOLD_LIGHT = "#FFE49A";
 
 // ---- geometry ----
 const T = 62;       // tile size
@@ -385,6 +387,7 @@ export default function MonoPuzzle() {
   );
 
   const firstSolved = unlocked;
+  const allSolved = solved.length > 0 && solved.every(Boolean);
 
   // evaluate a puzzle when the player presses its answer button
   const submit = useCallback((i) => {
@@ -541,6 +544,11 @@ export default function MonoPuzzle() {
         .puz-pulse { animation: puzPulse .42s ease; transform-box: fill-box; transform-origin: center; }
         @keyframes hintBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
         .hint-bob { animation: hintBob 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+        @keyframes puzGoldGlow {
+          0%,100% { filter: drop-shadow(0 0 2px rgba(212,167,44,.65)) drop-shadow(0 0 6px rgba(212,167,44,.35)); }
+          50% { filter: drop-shadow(0 0 6px rgba(255,228,154,.95)) drop-shadow(0 0 16px rgba(255,228,154,.6)); }
+        }
+        .puz-gold { animation: puzGoldGlow 1.8s ease-in-out infinite; }
       `}</style>
       <svg
         ref={svgRef}
@@ -573,8 +581,9 @@ export default function MonoPuzzle() {
                 <rect
                   x={m.x} y={m.y} width={m.fw} height={m.fh} rx={10}
                   fill="none"
-                  stroke={isDone ? INK : active ? "#8A8A87" : HAIR}
-                  strokeWidth={isDone ? 2 : 1.5}
+                  className={allSolved ? "puz-gold" : undefined}
+                  stroke={allSolved ? GOLD_LIGHT : isDone ? INK : active ? "#8A8A87" : HAIR}
+                  strokeWidth={allSolved ? 2.5 : isDone ? 2 : 1.5}
                   strokeDasharray={wrong ? "6 4" : undefined}
                 />
                 {/* index */}
