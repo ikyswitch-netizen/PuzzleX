@@ -8,7 +8,9 @@ const INK = "#141414";
 const HAIR = "#D9D9D7";
 const DOT = "#E4E4E2";
 const DIM = "#B5B5B2";
-const LIGHT = "#E3E3E1";   // a region, unshaded
+// regions read as white sheets on the grey world; cells outside every region
+// are left unpainted so the background shows through
+const REGION = "#FFFFFF";
 const DARK = "#8F8F8C";    // a region the player has shaded
 const GOLD_LIGHT = "#FFE49A";
 
@@ -292,12 +294,12 @@ export default function RegionPuzzle() {
                 {Array.from({ length: m.p.rows }).map((_, r) =>
                   Array.from({ length: m.p.cols }).map((__, c) => {
                     const id = at(r, c);
+                    if (id === 0) return null;
                     return (
                       <rect
                         key={`${r}-${c}`}
                         x={gx + c * CELL} y={gy + r * CELL} width={CELL} height={CELL}
-                        fill={id === 0 ? "#FFFFFF" : mark.has(id) ? DARK : LIGHT}
-                        stroke="rgba(20,20,20,0.08)" strokeWidth={1}
+                        fill={mark.has(id) ? DARK : REGION}
                       />
                     );
                   })

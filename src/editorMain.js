@@ -2,8 +2,10 @@ import { BG, makeCells, analyze, splitRegions, hBlack, vBlack } from "./regionRu
 
 const S = 42, PAD = 16, MAXR = 12;
 const TINTS = ["#DCDCD9","#D7E1E6","#E3DCE6","#E6E0D4","#D7E6DD","#E6D8D8","#DDDFEA","#E9E3D5","#D5E4E4","#E4D5DD","#DEE6D5","#E6DEEA"];
-// hairline is translucent ink so it reads on white, tinted and dark cells alike
-const LIGHT = "#E3E3E1", DARK = "#8F8F8C", INK = "#141414", HAIR = "rgba(20,20,20,0.10)";
+// hairline is translucent ink so it reads on white, tinted and dark cells alike.
+// PAPER/REGION mirror RegionPuzzle.jsx so the preview matches the real game.
+const DARK = "#8F8F8C", INK = "#141414", HAIR = "rgba(20,20,20,0.10)";
+const PAPER = "#F4F4F5", REGION = "#FFFFFF";
 
 const state = {
   rows: 9, cols: 9, cells: makeCells(9, 9),
@@ -39,13 +41,17 @@ function render() {
   for (let r = 0; r < state.rows; r++) {
     for (let c = 0; c < state.cols; c++) {
       const id = state.cells[r][c];
-      let fill = "#FFFFFF";
-      if (id !== BG) {
-        const shaded = state.play ? state.play.has(id) : (state.show.answer && a.dark.has(id));
-        fill = shaded ? DARK : (state.show.preview || state.play) ? LIGHT : TINTS[(id - 1) % TINTS.length];
-      }
-      svg.appendChild(el("rect", { x: PAD + c * S, y: PAD + r * S, width: S, height: S, fill, stroke: HAIR, "stroke-width": 1 }));
-      if (id !== BG && !state.show.preview && !state.play) {
+      const previewing = state.show.preview || !!state.play;
+      const shaded = id !== BG && (state.play ? state.play.has(id) : (state.show.answer && a.dark.has(id)));
+      // previewing renders exactly what the player sees: white regions on the
+      // grey ground, no grid. Editing keeps tints and the grid to paint against.
+      const fill = previewing
+        ? (id === BG ? PAPER : shaded ? DARK : REGION)
+        : (id === BG ? "#FFFFFF" : shaded ? DARK : TINTS[(id - 1) % TINTS.length]);
+      const cell = { x: PAD + c * S, y: PAD + r * S, width: S, height: S, fill };
+      if (!previewing) { cell.stroke = HAIR; cell["stroke-width"] = 1; }
+      svg.appendChild(el("rect", cell));
+      if (id !== BG && !previewing) {
         const t = el("text", {
           x: PAD + c * S + S / 2, y: PAD + r * S + S / 2 + 4,
           "text-anchor": "middle", "font-size": 11, fill: "#9A9A95",
