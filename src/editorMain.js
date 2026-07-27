@@ -1,110 +1,4 @@
-<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="../favicon.svg">
-<title>領域パズル エディタ</title>
-<style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 20px; background: #F4F4F5; color: #141414;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 13px; line-height: 1.6;
-  }
-  h1 { font-size: 15px; letter-spacing: 2px; font-weight: 600; margin: 0 0 4px; }
-  .sub { color: #86867F; font-size: 11px; margin-bottom: 18px; }
-  .wrap { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 22px; align-items: start; max-width: 1100px; }
-  @media (max-width: 720px) { .wrap { grid-template-columns: 1fr; } }
-  .panel > section { border-top: 1px solid #E0E0DD; padding: 12px 0; }
-  .panel > section:first-child { border-top: 0; padding-top: 0; }
-  .lbl { font-size: 10px; letter-spacing: 1.5px; color: #86867F; margin-bottom: 8px; }
-  button, select, input {
-    font: inherit; font-size: 12px; color: #141414; background: #FFF;
-    border: 1px solid #D9D9D7; border-radius: 4px; padding: 5px 9px; cursor: pointer;
-  }
-  button:hover { border-color: #8A8A87; }
-  button.on { background: #141414; color: #FFF; border-color: #141414; }
-  input[type=number] { width: 56px; cursor: text; }
-  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .swatches { display: flex; flex-wrap: wrap; gap: 5px; }
-  .sw {
-    width: 34px; height: 30px; border: 1px solid #D9D9D7; border-radius: 4px;
-    display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer;
-  }
-  .sw.on { outline: 2px solid #141414; outline-offset: 1px; border-color: #141414; }
-  .toggles { display: flex; flex-direction: column; gap: 5px; align-items: stretch; }
-  .toggles button { text-align: left; }
-  svg { display: block; max-width: 100%; height: auto; touch-action: none; user-select: none; }
-  .board { background: #FFF; border: 1px solid #E0E0DD; border-radius: 8px; padding: 14px; width: fit-content; max-width: 100%; }
-  .info { margin-top: 12px; font-size: 12px; color: #4A4A46; }
-  .info b { font-weight: 600; color: #141414; }
-  .warn { color: #C0392B; }
-  .good { color: #2D7A46; }
-  textarea {
-    width: 100%; height: 90px; font: inherit; font-size: 11px; margin-top: 8px;
-    border: 1px solid #D9D9D7; border-radius: 4px; padding: 7px; resize: vertical; background: #FFF;
-  }
-</style>
-</head>
-<body>
-<h1>領域パズル エディタ</h1>
-<div class="sub">マスをドラッグして領域を塗る／右ドラッグで消去。黒線・T字接合・射・答えは自動で計算されます。</div>
-
-<div class="wrap">
-  <div class="panel">
-    <section>
-      <div class="lbl">盤面</div>
-      <div class="row">
-        <input type="number" id="rows" min="2" max="20" value="9"> 行
-        <input type="number" id="cols" min="2" max="20" value="9"> 列
-      </div>
-      <div class="row" style="margin-top:6px">
-        <button id="resize">サイズ変更</button>
-        <button id="clear">全消去</button>
-        <button id="undo">元に戻す</button>
-      </div>
-    </section>
-
-    <section>
-      <div class="lbl">領域（数字キーでも選択）</div>
-      <div class="swatches" id="swatches"></div>
-    </section>
-
-    <section>
-      <div class="lbl">表示</div>
-      <div class="toggles">
-        <button data-t="answer">答え（濃いグレー）</button>
-        <button data-t="arrows">射の向き</button>
-        <button data-t="junctions">T字接合の位置</button>
-        <button data-t="preview">本番プレビュー</button>
-      </div>
-    </section>
-
-    <section>
-      <div class="lbl">試遊</div>
-      <div class="toggles">
-        <button id="playToggle">試遊モード</button>
-        <button id="playCheck">判定する</button>
-      </div>
-      <div class="info" id="playInfo"></div>
-    </section>
-  </div>
-
-  <div>
-    <div class="board"><svg id="svg"></svg></div>
-    <div class="info" id="info"></div>
-    <div class="lbl" style="margin-top:16px">データ（コピーして保存 / 貼り付けて読込）</div>
-    <textarea id="json" spellcheck="false"></textarea>
-    <div class="row" style="margin-top:6px">
-      <button id="load">この内容を読み込む</button>
-      <button id="copy">コピー</button>
-    </div>
-  </div>
-</div>
-
-<script type="module">
-import { BG, makeCells, analyze, splitRegions, regionIds, hBlack, vBlack } from "./region-logic.js";
+import { BG, makeCells, analyze, splitRegions, hBlack, vBlack } from "./regionRules.js";
 
 const S = 42, PAD = 16, MAXR = 12;
 const TINTS = ["#DCDCD9","#D7E1E6","#E3DCE6","#E6E0D4","#D7E6DD","#E6D8D8","#DDDFEA","#E9E3D5","#D5E4E4","#E4D5DD","#DEE6D5","#E6DEEA"];
@@ -242,7 +136,10 @@ svg.addEventListener("pointerdown", (ev) => {
   svg.setPointerCapture(ev.pointerId);
   if (state.play) {
     const id = state.cells[rc[0]][rc[1]];
-    if (id !== BG) { state.play.has(id) ? state.play.delete(id) : state.play.add(id); render(); }
+    if (id !== BG) {
+      if (state.play.has(id)) state.play.delete(id); else state.play.add(id);
+      render();
+    }
     return;
   }
   state.undo.push(snapshot());
@@ -325,6 +222,3 @@ addEventListener("keydown", (e) => {
 });
 
 render();
-</script>
-</body>
-</html>

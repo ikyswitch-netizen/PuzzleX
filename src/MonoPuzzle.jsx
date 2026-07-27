@@ -7,8 +7,7 @@ const HAIR = "#D9D9D7";
 const DOT = "#E4E4E2";
 const DIM = "#B5B5B2";
 const RED = "#E23B3B";   // brief error flash on rule-breaking cells
-const GOLD = "#D4A72C";  // frame color once every puzzle is solved
-const GOLD_LIGHT = "#FFE49A";
+const GOLD_LIGHT = "#FFE49A";  // frame glow once every puzzle is solved
 
 // ---- geometry ----
 const T = 62;       // tile size
