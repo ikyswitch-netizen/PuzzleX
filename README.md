@@ -1,14 +1,19 @@
 # PuzzleX
 
-Two monochrome puzzle games built with React and SVG, sharing one pannable
-world layout. `src/App.jsx` mounts both behind a MONO / AREA switch.
+Two monochrome puzzle games built with React and SVG, sharing one world
+layout. `src/App.jsx` mounts both behind a MONO / AREA switch.
+
+Both games lay their puzzles out left to right on one band and keep exactly one
+of them centered. The camera moves only through the ◀ / ▶ buttons at the bottom
+of the screen (or the arrow keys) — one puzzle per press — so dragging always
+means "edit the board" and never accidentally moves the world.
 
 ## MONO — Nurikabe-style
 
-- `src/MonoPuzzle.jsx` — a pannable world of small grids. Drag empty space to
-  pan; drag over a grid to paint/erase black tiles. A grid is solved when all
-  black tiles form one connected region and every circled cell has exactly one
-  same-colored neighbor.
+- `src/MonoPuzzle.jsx` — a world of small grids. Drag over a grid to
+  paint/erase black tiles. A grid is solved when all black tiles form one
+  connected region and every circled cell has exactly one same-colored
+  neighbor. The ▶ button stays locked until puzzle 1 is solved.
 
 ## AREA — T-junction regions
 
@@ -20,7 +25,7 @@ receives no morphism.**
 
 The rule is never stated in-game — inferring it from the worked examples is
 the point, so a wrong answer only shakes the board rather than naming the
-regions at fault, and panning is never locked.
+regions at fault, and browsing ahead is never locked.
 
 - `src/regionRules.js` — boundaries, junctions, morphisms and the answer.
   The single source of truth, shared by the game and the editor.

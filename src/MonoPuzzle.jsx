@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect, useCallback, useMemo } from "react";
 
 // ---- palette (strict monochrome) ----
 const PAPER = "#F4F4F5";
@@ -212,6 +212,21 @@ const METAS = [
 
 const frameCenter = (m) => ({ x: m.x + m.fw / 2, y: m.y + m.fh / 2 });
 
+// how long the camera takes to slide from one puzzle to the next
+const SLIDE_MS = 260;
+
+// area covered by the background dot field, in world coords: every frame plus a
+// wide margin, so the field still fills the screen mid-slide
+const DOT_STEP = 44;
+const DOT_FIELD = (() => {
+  const pad = 3000;
+  const x0 = Math.min(...METAS.map((m) => m.x)) - pad;
+  const y0 = Math.min(...METAS.map((m) => m.y)) - pad;
+  const x1 = Math.max(...METAS.map((m) => m.x + m.fw)) + pad;
+  const y1 = Math.max(...METAS.map((m) => m.y + m.fh)) + pad;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+})();
+
 // ---- per-puzzle answer button (world coords, centered below each frame) ----
 const BTN_W = 48, BTN_H = 30, BTN_GAP = 16;
 const buttonRect = (m) => ({ x: m.x + m.fw / 2 - BTN_W / 2, y: m.y + m.fh + BTN_GAP, w: BTN_W, h: BTN_H });
@@ -304,9 +319,14 @@ export default function MonoPuzzle() {
   // always-fresh drag handlers, so the native touch listeners (attached once)
   // never see stale state
   const handlersRef = useRef({});
+  // timestamp the current camera slide ends; taps are ignored until then, so a
+  // tap chasing the previous one can't land on a cell that has moved under it
+  const slideUntil = useRef(0);
 
   const [size, setSize] = useState({ w: 800, h: 600 });
-  const [cam, setCam] = useState({ x: 0, y: 0 });
+  // the puzzle on screen. The camera is derived from it: one puzzle is always
+  // centered, so there is no free panning to mis-trigger while painting.
+  const [index, setIndex] = useState(0);
   const [grids, setGrids] = useState(() =>
     METAS.map((m) => {
       const g = Array.from({ length: m.rows }, (_, r) => Array(colsOf(m, r)).fill(0));
@@ -317,33 +337,24 @@ export default function MonoPuzzle() {
       return g;
     })
   );
-  const [ready, setReady] = useState(false);
   // solved[i]: last check passed and the board hasn't been edited since
   const [solved, setSolved] = useState(() => METAS.map(() => false));
-  // once puzzle 1 is solved, scrolling stays unlocked even if it's edited later
+  // once puzzle 1 is solved, moving on stays unlocked even if it's edited later
   const [unlocked, setUnlocked] = useState(false);
   // transient result of the last submit: { i, ok, bad } — a brief flash; on a
   // wrong answer `bad` is the Set of rule-breaking cell keys (flashed red)
   const [flash, setFlash] = useState(null);
 
-  // measure + initial framing on the first puzzle
+  // measure the viewport; the camera follows from `index` and this size
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const apply = () => {
-      const w = el.clientWidth, h = el.clientHeight;
-      setSize({ w, h });
-      if (!ready) {
-        const c = frameCenter(METAS[0]);
-        setCam({ x: c.x - w / 2, y: c.y - h / 2 });
-        setReady(true);
-      }
-    };
+    const apply = () => setSize({ w: el.clientWidth, h: el.clientHeight });
     apply();
     const ro = new ResizeObserver(apply);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ready]);
+  }, []);
 
   // Touch is handled with native Touch events (not Pointer events): iOS WebKit's
   // pointermove/setPointerCapture during a touch-drag is unreliable, so a swipe
@@ -380,13 +391,39 @@ export default function MonoPuzzle() {
     };
   }, []);
 
-  const centerW = { x: cam.x + size.w / 2, y: cam.y + size.h / 2 };
-  const activeIndex = METAS.findIndex(
-    (m) => centerW.x >= m.x && centerW.x <= m.x + m.fw && centerW.y >= m.y && centerW.y <= m.y + m.fh
-  );
+  const cam = useMemo(() => {
+    const c = frameCenter(METAS[index]);
+    return { x: c.x - size.w / 2, y: c.y - size.h / 2 };
+  }, [index, size.w, size.h]);
 
+  const activeIndex = index;
   const firstSolved = unlocked;
   const allSolved = solved.length > 0 && solved.every(Boolean);
+
+  // puzzle 1 still gates the rest: until it is solved there is nowhere to go
+  const canPrev = index > 0;
+  const canNext = index < METAS.length - 1 && firstSolved;
+
+  const go = useCallback((dir) => {
+    const next = index + dir;
+    if (next < 0 || next >= METAS.length) return;
+    if (dir > 0 && !unlocked) return;
+    slideUntil.current = Date.now() + SLIDE_MS;
+    dragRef.current = null;   // a slide cancels any drag in progress
+    setIndex(next);
+  }, [index, unlocked]);
+
+  // arrow keys mirror the buttons
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowLeft") go(-1);
+      else if (e.key === "ArrowRight") go(1);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go]);
 
   // evaluate a puzzle when the player presses its answer button
   const submit = useCallback((i) => {
@@ -460,12 +497,15 @@ export default function MonoPuzzle() {
     return { x: clientX - r.left + cam.x, y: clientY - r.top + cam.y };
   };
 
+  // Dragging only ever paints: the camera moves by button, never by drag, so a
+  // swipe meant to change puzzles can no longer flip cells by accident.
   const begin = (clientX, clientY) => {
+    dragRef.current = null;
+    if (Date.now() < slideUntil.current) return;
     const w = worldFrom(clientX, clientY);
     const btn = buttonAt(w.x, w.y);
     if (btn >= 0) {
       submit(btn);
-      dragRef.current = null;
       return;
     }
     const hit = tileAt(w.x, w.y);
@@ -474,20 +514,12 @@ export default function MonoPuzzle() {
       toggle(hit.i, hit.row, hit.col);
       painted.add(hit.row + "," + hit.col);
       dragRef.current = { mode: "paint", puzzle: hit.i, painted };
-    } else if (firstSolved) {
-      dragRef.current = { mode: "pan", sx: clientX, sy: clientY, cx: cam.x, cy: cam.y };
-    } else {
-      dragRef.current = null;
     }
   };
 
   const move = (clientX, clientY) => {
     const d = dragRef.current;
     if (!d) return;
-    if (d.mode === "pan") {
-      setCam({ x: d.cx - (clientX - d.sx), y: d.cy - (clientY - d.sy) });
-      return;
-    }
     const w = worldFrom(clientX, clientY);
     const hit = tileAt(w.x, w.y);
     if (hit && hit.i === d.puzzle) {
@@ -522,15 +554,6 @@ export default function MonoPuzzle() {
     end();
   };
 
-  // ---- dot field (shows camera motion over empty space) ----
-  const dots = [];
-  const step = 44;
-  const x0 = Math.floor(cam.x / step) * step;
-  const y0 = Math.floor(cam.y / step) * step;
-  for (let x = x0; x < cam.x + size.w + step; x += step)
-    for (let y = y0; y < cam.y + size.h + step; y += step)
-      dots.push(<circle key={x + ":" + y} cx={x} cy={y} r={1} fill={DOT} />);
-
   return (
     <div
       ref={wrapRef}
@@ -553,16 +576,27 @@ export default function MonoPuzzle() {
         ref={svgRef}
         width={size.w}
         height={size.h}
-        style={{ display: "block", touchAction: "none", cursor: dragRef.current?.mode === "pan" ? "grabbing" : "default" }}
+        style={{ display: "block", touchAction: "none" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onPointerLeave={endDrag}
       >
-        {/* WORLD LAYER */}
-        <g transform={`translate(${-cam.x},${-cam.y})`}>
-          {dots}
+        <defs>
+          <pattern id="mono-dots" x={0} y={0} width={DOT_STEP} height={DOT_STEP} patternUnits="userSpaceOnUse">
+            <circle cx={DOT_STEP / 2} cy={DOT_STEP / 2} r={1} fill={DOT} />
+          </pattern>
+        </defs>
+
+        {/* WORLD LAYER — slides between puzzles when a nav button is pressed */}
+        <g
+          style={{
+            transform: `translate(${-cam.x}px,${-cam.y}px)`,
+            transition: `transform ${SLIDE_MS}ms cubic-bezier(.22,.61,.36,1)`,
+          }}
+        >
+          <rect x={DOT_FIELD.x} y={DOT_FIELD.y} width={DOT_FIELD.w} height={DOT_FIELD.h} fill="url(#mono-dots)" />
           {!firstSolved && (
             <GuideBoard x={METAS[0].x + (METAS[0].fw - GUIDE_W) / 2} y={-GGAP - GUIDE_H} />
           )}
@@ -765,13 +799,69 @@ export default function MonoPuzzle() {
       {/* non-verbal lock cue while puzzle 1 is unsolved */}
       {!firstSolved && <LockCue />}
 
-      {/* progress pips */}
-      <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 10, pointerEvents: "none" }}>
+      {/* nav arrows flanking the progress pips */}
+      <NavBar
+        index={index}
+        solved={solved}
+        canPrev={canPrev}
+        canNext={canNext}
+        onPrev={() => go(-1)}
+        onNext={() => go(1)}
+      />
+    </div>
+  );
+}
+
+// The only way to change puzzles: one step left or right per press. Pips double
+// as a position readout — the filled ring is where the camera is.
+function NavBar({ index, solved, canPrev, canNext, onPrev, onNext }) {
+  return (
+    <div style={{ position: "absolute", bottom: 16, left: 0, right: 0, display: "flex", justifyContent: "center", alignItems: "center", gap: 16 }}>
+      <NavButton dir={-1} enabled={canPrev} onClick={onPrev} label="Previous puzzle" />
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 9, flexWrap: "wrap", maxWidth: 300, pointerEvents: "none" }}>
         {solved.map((s, i) => (
-          <div key={i} style={{ width: 9, height: 9, borderRadius: 9, background: s ? INK : "transparent", border: `1.5px solid ${s ? INK : DIM}` }} />
+          <div
+            key={i}
+            style={{
+              width: 9, height: 9, borderRadius: 9,
+              background: s ? INK : "transparent",
+              border: `1.5px solid ${s ? INK : DIM}`,
+              outline: i === index ? `1.5px solid ${INK}` : "none",
+              outlineOffset: 2,
+            }}
+          />
         ))}
       </div>
+      <NavButton dir={1} enabled={canNext} onClick={onNext} label="Next puzzle" />
     </div>
+  );
+}
+
+function NavButton({ dir, enabled, onClick, label }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={!enabled}
+      onClick={onClick}
+      style={{
+        width: 46, height: 46, padding: 0, display: "grid", placeItems: "center",
+        background: "#FFFFFF", borderRadius: 12,
+        border: `1.5px solid ${enabled ? INK : HAIR}`,
+        cursor: enabled ? "pointer" : "default",
+        opacity: enabled ? 1 : 0.4,
+        touchAction: "manipulation",
+        transition: "opacity 140ms ease, border-color 140ms ease",
+      }}
+    >
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <path
+          d={dir < 0 ? "M 12.5 4 L 6.5 10 L 12.5 16" : "M 7.5 4 L 13.5 10 L 7.5 16"}
+          fill="none" stroke={enabled ? INK : DIM} strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   );
 }
 
