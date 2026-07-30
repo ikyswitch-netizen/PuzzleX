@@ -54,6 +54,20 @@ const DOT_FIELD = (() => {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 })();
 
+// ---- tutorial guide: puzzle 1 with its answer already shaded, drawn above the
+// board until puzzle 1 is solved. It gives away one worked example — which is
+// the point, since the rule itself is never stated.
+const GCELL = 26;
+const GPAD = 10;
+const GLABEL = 18;
+const GGAP = 22;   // gap between the guide and puzzle 1's frame
+const GUIDE = {
+  p: METAS[0].p,
+  answer: METAS[0].answer,
+  w: GPAD * 2 + METAS[0].p.cols * GCELL,
+  h: GLABEL + METAS[0].p.rows * GCELL + GPAD,
+};
+
 const sameSet = (a, b) => a.size === b.size && [...a].every((v) => b.has(v));
 
 export default function RegionPuzzle() {
@@ -73,6 +87,8 @@ export default function RegionPuzzle() {
   // shaded[i]: the set of region ids the player has darkened on puzzle i
   const [shaded, setShaded] = useState(() => METAS.map(() => new Set()));
   const [solved, setSolved] = useState(() => METAS.map(() => false));
+  // once puzzle 1 is solved, moving on stays unlocked even if it's edited later
+  const [unlocked, setUnlocked] = useState(false);
   const [flash, setFlash] = useState(null);
 
   // measure the viewport; the camera follows from `index` and this size
@@ -122,20 +138,22 @@ export default function RegionPuzzle() {
   }, [index, size.w, size.h]);
 
   const activeIndex = index;
+  const firstSolved = unlocked;
   const allSolved = solved.length > 0 && solved.every(Boolean);
 
-  // browsing is never locked here: inferring the rule needs many examples, so
-  // the player must be free to look ahead from the start
+  // puzzle 1 comes with its answer shown, so it gates the rest the way MONO's
+  // does: reproduce the worked example, then the run opens up
   const canPrev = index > 0;
-  const canNext = index < METAS.length - 1;
+  const canNext = index < METAS.length - 1 && firstSolved;
 
   const go = useCallback((dir) => {
     const next = index + dir;
     if (next < 0 || next >= METAS.length) return;
+    if (dir > 0 && !unlocked) return;
     slideUntil.current = Date.now() + SLIDE_MS;
     dragRef.current = null;   // a slide cancels any drag in progress
     setIndex(next);
-  }, [index]);
+  }, [index, unlocked]);
 
   // arrow keys mirror the buttons
   useEffect(() => {
@@ -154,7 +172,10 @@ export default function RegionPuzzle() {
   const submit = useCallback((i) => {
     if (i < 0 || solved[i]) return;
     const ok = sameSet(shaded[i], METAS[i].answer);
-    if (ok) setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
+    if (ok) {
+      setSolved((prev) => prev.map((v, j) => (j === i ? true : v)));
+      if (i === 0) setUnlocked(true);
+    }
     setFlash({ i, ok });
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = setTimeout(() => setFlash(null), ok ? 500 : 700);
@@ -253,6 +274,8 @@ export default function RegionPuzzle() {
         @keyframes rgPulse { 0%{transform:scale(1)} 45%{transform:scale(1.04)} 100%{transform:scale(1)} }
         .rg-shake { animation: rgShake .42s ease; transform-box: fill-box; transform-origin: center; }
         .rg-pulse { animation: rgPulse .42s ease; transform-box: fill-box; transform-origin: center; }
+        @keyframes hintBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
+        .hint-bob { animation: hintBob 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
         @keyframes rgGold {
           0%,100% { filter: drop-shadow(0 0 2px rgba(212,167,44,.65)) drop-shadow(0 0 6px rgba(212,167,44,.35)); }
           50% { filter: drop-shadow(0 0 6px rgba(255,228,154,.95)) drop-shadow(0 0 16px rgba(255,228,154,.6)); }
@@ -284,6 +307,12 @@ export default function RegionPuzzle() {
           }}
         >
           <rect x={DOT_FIELD.x} y={DOT_FIELD.y} width={DOT_FIELD.w} height={DOT_FIELD.h} fill="url(#rg-dots)" />
+          {!firstSolved && (
+            <GuideBoard
+              x={METAS[0].x + (METAS[0].fw - GUIDE.w) / 2}
+              y={METAS[0].y - GGAP - GUIDE.h}
+            />
+          )}
           {METAS.map((m, i) => {
             const active = i === activeIndex;
             const isDone = solved[i];
@@ -369,6 +398,9 @@ export default function RegionPuzzle() {
         />
       </svg>
 
+      {/* non-verbal lock cue while puzzle 1 is unsolved */}
+      {!firstSolved && <LockCue />}
+
       {/* nav arrows flanking the progress pips */}
       <NavBar
         index={index}
@@ -378,6 +410,74 @@ export default function RegionPuzzle() {
         onPrev={() => go(-1)}
         onNext={() => go(1)}
       />
+    </div>
+  );
+}
+
+// Puzzle 1 redrawn small with its answer already shaded — the one worked
+// example the player gets. Same board, same lines, just the solution filled in.
+function GuideBoard({ x, y }) {
+  const { p, answer } = GUIDE;
+  const gx = x + GPAD, gy = y + GLABEL;
+  const at = (r, c) => cellAt(p, r, c);
+
+  const lines = [];
+  for (let r = 0; r <= p.rows; r++)
+    for (let c = 0; c < p.cols; c++)
+      if (at(r - 1, c) !== at(r, c))
+        lines.push(
+          <line key={`h${r}-${c}`}
+            x1={gx + c * GCELL} y1={gy + r * GCELL}
+            x2={gx + (c + 1) * GCELL} y2={gy + r * GCELL}
+            stroke={INK} strokeWidth={2} strokeLinecap="square" />
+        );
+  for (let r = 0; r < p.rows; r++)
+    for (let c = 0; c <= p.cols; c++)
+      if (at(r, c - 1) !== at(r, c))
+        lines.push(
+          <line key={`v${r}-${c}`}
+            x1={gx + c * GCELL} y1={gy + r * GCELL}
+            x2={gx + c * GCELL} y2={gy + (r + 1) * GCELL}
+            stroke={INK} strokeWidth={2} strokeLinecap="square" />
+        );
+
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      <rect x={x} y={y} width={GUIDE.w} height={GUIDE.h} rx={8} fill="none" stroke={HAIR} strokeWidth={1} strokeDasharray="4 3" />
+      {Array.from({ length: p.rows }).map((_, r) =>
+        Array.from({ length: p.cols }).map((__, c) => {
+          const id = at(r, c);
+          if (id === 0) return null;
+          return (
+            <rect
+              key={`${r}-${c}`}
+              x={gx + c * GCELL} y={gy + r * GCELL} width={GCELL} height={GCELL}
+              fill={answer.has(id) ? DARK : REGION}
+            />
+          );
+        })
+      )}
+      {lines}
+      {/* bobbing down-arrow: "copy this into the puzzle below" */}
+      <g className="hint-bob">
+        <path
+          d={`M ${x + GUIDE.w / 2} ${y + GUIDE.h + 3} l 0 12 M ${x + GUIDE.w / 2 - 6} ${y + GUIDE.h + 9} l 6 6 l 6 -6`}
+          fill="none" stroke={DIM} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+        />
+      </g>
+    </g>
+  );
+}
+
+// small padlock icon, top-center: non-verbal "solve first to move on" cue
+function LockCue() {
+  return (
+    <div style={{ position: "absolute", top: 16, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <path d="M 8 12 v -2.5 a 5 5 0 0 1 10 0 v 2.5" fill="none" stroke={DIM} strokeWidth="1.6" strokeLinecap="round" />
+        <rect x="6.5" y="12" width="13" height="10" rx="2.5" fill="none" stroke={DIM} strokeWidth="1.6" />
+        <circle cx="13" cy="16.5" r="1.5" fill={DIM} />
+      </svg>
     </div>
   );
 }

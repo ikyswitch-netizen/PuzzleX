@@ -25,7 +25,9 @@ receives no morphism.**
 
 The rule is never stated in-game — inferring it from the worked examples is
 the point, so a wrong answer only shakes the board rather than naming the
-regions at fault, and browsing ahead is never locked.
+regions at fault. Puzzle 1 is the one exception: it is drawn a second time
+above the board with its answer already shaded, and the ▶ button stays locked
+until the player reproduces it.
 
 - `src/regionRules.js` — boundaries, junctions, morphisms and the answer.
   The single source of truth, shared by the game and the editor.
