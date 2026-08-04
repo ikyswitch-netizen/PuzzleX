@@ -18,7 +18,6 @@ const GOLD_LIGHT = "#FFE49A";
 const CELL = 44;
 const PADX = 22, PADTOP = 42, PADBOT = 22;
 const GAP = 96;
-const BTN_W = 48, BTN_H = 30, BTN_GAP = 16;
 
 // Puzzles are laid out left to right on one horizontal band, each vertically
 // centred on y = 0 so boards of different sizes still read as a single row.
@@ -37,7 +36,6 @@ const METAS = (() => {
 })();
 
 const frameCenter = (m) => ({ x: m.x + m.fw / 2, y: m.y + m.fh / 2 });
-const buttonRect = (m) => ({ x: m.x + m.fw / 2 - BTN_W / 2, y: m.y + m.fh + BTN_GAP, w: BTN_W, h: BTN_H });
 
 // how long the camera takes to slide from one puzzle to the next
 const SLIDE_MS = 260;
@@ -181,15 +179,6 @@ export default function RegionPuzzle() {
     flashTimer.current = setTimeout(() => setFlash(null), ok ? 500 : 700);
   }, [solved, shaded]);
 
-  const buttonAt = useCallback((wx, wy) => {
-    for (let i = 0; i < METAS.length; i++) {
-      if (solved[i]) continue;
-      const b = buttonRect(METAS[i]);
-      if (wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) return i;
-    }
-    return -1;
-  }, [solved]);
-
   // world point -> { i, region } when it lands on a painted region
   const regionAt = useCallback((wx, wy) => {
     for (let i = 0; i < METAS.length; i++) {
@@ -227,8 +216,6 @@ export default function RegionPuzzle() {
     dragRef.current = null;
     if (Date.now() < slideUntil.current) return;
     const w = worldFrom(clientX, clientY);
-    const btn = buttonAt(w.x, w.y);
-    if (btn >= 0) { submit(btn); return; }
     const hit = regionAt(w.x, w.y);
     if (hit && hit.i === activeIndex) {
       toggle(hit.i, hit.region);
@@ -319,7 +306,6 @@ export default function RegionPuzzle() {
             const wrong = flash && flash.i === i && !flash.ok;
             const right = flash && flash.i === i && flash.ok;
             const gx = m.x + PADX, gy = m.y + PADTOP;
-            const b = buttonRect(m);
             const mark = shaded[i];
             const at = (r, c) => cellAt(m.p, r, c);
 
@@ -372,16 +358,6 @@ export default function RegionPuzzle() {
                   })
                 )}
                 {lines}
-
-                {!isDone && (
-                  <g style={{ cursor: "pointer" }}>
-                    <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={9} fill="#FFFFFF" stroke={active ? INK : DIM} strokeWidth={1.5} />
-                    <path
-                      d={`M ${b.x + b.w / 2 - 9} ${b.y + b.h / 2} l 6 7 l 12 -13`}
-                      fill="none" stroke={active ? INK : DIM} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"
-                    />
-                  </g>
-                )}
               </g>
             );
           })}
@@ -401,6 +377,10 @@ export default function RegionPuzzle() {
       {/* non-verbal lock cue while puzzle 1 is unsolved */}
       {!firstSolved && <LockCue />}
 
+      {/* Keep the answer action in screen space so it cannot be covered by the
+          progress controls on short mobile viewports. */}
+      {!solved[index] && <SubmitButton onClick={() => submit(index)} />}
+
       {/* nav arrows flanking the progress pips */}
       <NavBar
         index={index}
@@ -411,6 +391,44 @@ export default function RegionPuzzle() {
         onNext={() => go(1)}
       />
     </div>
+  );
+}
+
+function SubmitButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      aria-label="Check answer"
+      onClick={onClick}
+      style={{
+        position: "absolute",
+        zIndex: 2,
+        left: "50%",
+        bottom: "calc(74px + env(safe-area-inset-bottom, 0px))",
+        width: 52,
+        height: 38,
+        padding: 0,
+        display: "grid",
+        placeItems: "center",
+        transform: "translateX(-50%)",
+        background: "#FFFFFF",
+        border: `1.5px solid ${INK}`,
+        borderRadius: 10,
+        cursor: "pointer",
+        touchAction: "manipulation",
+      }}
+    >
+      <svg width="24" height="20" viewBox="0 0 24 20" aria-hidden="true">
+        <path
+          d="M 3 10 l 6 7 l 12 -13"
+          fill="none"
+          stroke={INK}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   );
 }
 
@@ -486,7 +504,7 @@ function LockCue() {
 // as a position readout — the ringed pip is where the camera is.
 function NavBar({ index, solved, canPrev, canNext, onPrev, onNext }) {
   return (
-    <div style={{ position: "absolute", bottom: 16, left: 0, right: 0, display: "flex", justifyContent: "center", alignItems: "center", gap: 16 }}>
+    <div style={{ position: "absolute", bottom: "calc(16px + env(safe-area-inset-bottom, 0px))", left: 0, right: 0, display: "flex", justifyContent: "center", alignItems: "center", gap: 16 }}>
       <NavButton dir={-1} enabled={canPrev} onClick={onPrev} label="Previous puzzle" />
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 9, flexWrap: "wrap", maxWidth: 300, pointerEvents: "none" }}>
         {solved.map((s, i) => (
